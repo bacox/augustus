@@ -239,6 +239,52 @@ static void add_sea_edge(void)
     }
 }
 
+static void paint_according_to_segments(void)
+{
+    /*
+     *  Loop over the grid and for every cell lookup what the segment_id is.
+     *  If it is 0, do nothing
+     *  If the segment_id is bigger than 0, use the following mapping:
+     *  1 = meadows
+     *  2 = forests
+     *  3 = mountains
+     *  4 = shrub
+     *  5 = rubble
+     *  6 and bigger, do nothing
+     *
+     */
+    const uint16_t *segments = terrain_generator_segments();
+    int width = map_grid_width();
+    int height = map_grid_height();
+
+    for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+            int grid_offset = map_grid_offset(x, y);
+            uint16_t segment_id = segments[grid_offset];
+
+            switch (segment_id) {
+                case 1:
+                    map_terrain_set_with_tile_update(grid_offset, TERRAIN_MEADOW);
+                    break;
+                case 2:
+                    map_terrain_set_with_tile_update(grid_offset, TERRAIN_TREE);
+                    break;
+                case 3:
+                    map_terrain_set_with_tile_update(grid_offset, TERRAIN_ROCK);
+                    break;
+                case 4:
+                    map_terrain_set_with_tile_update(grid_offset, TERRAIN_SHRUB);
+                    break;
+                case 5:
+                    map_terrain_set_with_tile_update(grid_offset, TERRAIN_RUBBLE);
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
+}
+
 // Builds a complete terrain pass from base layer through river and biome overlays.
 void terrain_generator_river_map(unsigned int seed)
 {
@@ -248,10 +294,15 @@ void terrain_generator_river_map(unsigned int seed)
 
     generate_grassland();
     terrain_generator_generate_river();
+
+    terrain_generator_generate_river();
+
+    segment_map();
+    paint_according_to_segments();
     // terrain_generator_straight_river();
-    add_forests();
-    add_mountains();
-    add_meadows();
+    // add_forests();
+    // add_mountains();
+    // add_meadows();
     // add_lakes();
     // add_sea_edge();
 }
