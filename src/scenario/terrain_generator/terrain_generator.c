@@ -305,37 +305,142 @@ static void set_road_tile(int x, int y)
 
 static void add_road_between_points(int start_x, int start_y, int end_x, int end_y)
 {
+    const uint16_t *segments = terrain_generator_segments();
+    int width = map_grid_width();
+    int height = map_grid_height();
     int x = start_x;
     int y = start_y;
     int guard = 0;
-    int max_steps = map_grid_width() * map_grid_height() * 2;
+    int max_steps = width * height * 2;
+    int prev_step_x = 0;
+    int prev_step_y = 0;
+    // Number of initial steps forced inward from the entry edge before normal routing kicks in.
+    int min_steps_to_middle = 20;
+    int forced_steps = 0;
+    int force_dx = 0;
+    int force_dy = 0;
+    static const int dir_x[4] = { 1, -1, 0, 0 };
+    static const int dir_y[4] = { 0, 0, 1, -1 };
+
+    int start_offset = map_grid_offset(start_x, start_y);
+    int end_offset = map_grid_offset(end_x, end_y);
+    // Connected-component label for walkable land; road must remain inside this component.
+    uint16_t road_segment_id = segments[start_offset];
+
+    // Roads are only allowed on passable terrain (not water/rock).
+    if (!terrain_tile_is_passable(start_offset) || !terrain_tile_is_passable(end_offset)) {
+        return;
+    }
+    // If endpoints are not in the same reachable land segment, do not attempt a road.
+    if (road_segment_id == 0 || segments[end_offset] != road_segment_id) {
+        return;
+    }
+
+    // Determine inward direction (orthogonal to the starting map edge).
+    if (start_y == 0) {
+        force_dx = 0;
+        force_dy = 1;
+    } else if (start_y == height - 1) {
+        force_dx = 0;
+        force_dy = -1;
+    } else if (start_x == 0) {
+        force_dx = 1;
+        force_dy = 0;
+    } else if (start_x == width - 1) {
+        force_dx = -1;
+        force_dy = 0;
+    }
 
     set_road_tile(x, y);
     while ((x != end_x || y != end_y) && guard++ < max_steps) {
-        int dx = end_x - x;
-        int dy = end_y - y;
-        int step_x = (dx > 0) - (dx < 0);
-        int step_y = (dy > 0) - (dy < 0);
-        int abs_dx = abs(dx);
-        int abs_dy = abs(dy);
-        int roll = terrain_generator_random_between(0, 100);
+        int current_distance = abs(end_x - x) + abs(end_y - y);
+        int apply_forced_direction = (forced_steps < min_steps_to_middle) && (force_dx || force_dy);
+        int best_score = 1 << 30;
+        int best_x = x;
+        int best_y = y;
+        int best_step_x = 0;
+        int best_step_y = 0;
+        int found_move = 0;
 
-        if (abs_dx >= abs_dy) {
-            if (step_x && roll < 70) {
-                x += step_x;
-            } else if (step_y) {
-                y += step_y;
-            }
-        } else {
-            if (step_y && roll < 70) {
-                y += step_y;
-            } else if (step_x) {
-                x += step_x;
+        if (apply_forced_direction) {
+            int forced_nx = x + force_dx;
+            int forced_ny = y + force_dy;
+            if (!map_grid_is_inside(forced_nx, forced_ny, 1)) {
+                forced_steps = min_steps_to_middle;
+                apply_forced_direction = 0;
+            } else {
+                int forced_offset = map_grid_offset(forced_nx, forced_ny);
+                if (!terrain_tile_is_passable(forced_offset) || segments[forced_offset] != road_segment_id) {
+                    // Forced inward step is blocked, so stop forcing and continue with regular routing.
+                    forced_steps = min_steps_to_middle;
+                    apply_forced_direction = 0;
+                }
             }
         }
 
-        x = terrain_generator_clamp_int(x, 0, map_grid_width() - 1);
-        y = terrain_generator_clamp_int(y, 0, map_grid_height() - 1);
+        for (int i = 0; i < 4; i++) {
+            int nx = x + dir_x[i];
+            int ny = y + dir_y[i];
+            if (!map_grid_is_inside(nx, ny, 1)) {
+                continue;
+            }
+
+            int offset = map_grid_offset(nx, ny);
+            if (!terrain_tile_is_passable(offset)) {
+                continue;
+            }
+            if (segments[offset] != road_segment_id) {
+                continue;
+            }
+
+            if (apply_forced_direction) {
+                // During the initial phase, only allow moves along the inward direction.
+                if (dir_x[i] != force_dx || dir_y[i] != force_dy) {
+                    continue;
+                }
+            }
+
+            // Manhattan distance to the target; used as the base routing cost.
+            int next_distance = abs(end_x - nx) + abs(end_y - ny);
+            int step_x = nx - x;
+            int step_y = ny - y;
+            int score = next_distance * 100;
+
+            if (prev_step_x || prev_step_y) {
+                // Heading continuity term: straight is best, turns are penalized, reversal is worst.
+                if (step_x == prev_step_x && step_y == prev_step_y) {
+                    score -= 25;
+                } else if (step_x == -prev_step_x && step_y == -prev_step_y) {
+                    score += 80;
+                } else {
+                    score += 20;
+                }
+            }
+
+            if (next_distance > current_distance) {
+                score += 40;
+            }
+            score += terrain_generator_random_between(0, 3);
+
+            if (!found_move || score < best_score) {
+                found_move = 1;
+                best_score = score;
+                best_x = nx;
+                best_y = ny;
+                best_step_x = step_x;
+                best_step_y = step_y;
+            }
+        }
+
+        if (!found_move) {
+            break;
+        }
+
+        x = best_x;
+        y = best_y;
+        prev_step_x = best_step_x;
+        prev_step_y = best_step_y;
+        forced_steps++;
         set_road_tile(x, y);
     }
 }
@@ -344,6 +449,8 @@ static void set_entry_exit_points(void)
 {
     int width = map_grid_width();
     int height = map_grid_height();
+
+    const uint16_t *segments = terrain_generator_segments();
 
     int is_passable = 0;
     int entry_side = 0;
@@ -357,22 +464,44 @@ static void set_entry_exit_points(void)
         is_passable = terrain_tile_is_passable(map_grid_offset(entry_x, entry_y));
     }
 
-    uint8_t reachable_land[GRID_SIZE * GRID_SIZE];
-    int reachable_count = terrain_generator_flood_fill_reachable_land(entry_x, entry_y, reachable_land);
+    int entry_offset = map_grid_offset(entry_x, entry_y);
+    uint16_t entry_segment_id = segments[entry_offset];
+    int found_exit = 0;
+    int candidate_count = 0;
 
-    // Find a tile on the edge that is reachable.
-    if (reachable_count > 0) {
-        if (!choose_farthest_reachable_edge_point(entry_x, entry_y, width, height, reachable_land, &exit_x, &exit_y)) {
-            if (!choose_nearest_reachable_point(entry_x, entry_y, width, height, reachable_land, &exit_x, &exit_y)) {
-                exit_x = entry_x;
-                exit_y = entry_y;
+    if (entry_segment_id > 0) {
+        for (int ny = 0; ny < height; ny++) {
+            for (int nx = 0; nx < width; nx++) {
+                if (nx != 0 && nx != width - 1 && ny != 0 && ny != height - 1) {
+                    continue;
+                }
+
+                if (nx == entry_x && ny == entry_y) {
+                    continue;
+                }
+
+                int offset = map_grid_offset(nx, ny);
+                if (!terrain_tile_is_passable(offset)) {
+                    continue;
+                }
+                if (segments[offset] != entry_segment_id) {
+                    continue;
+                }
+
+                candidate_count++;
+                if (terrain_generator_random_between(0, candidate_count) == 0) {
+                    exit_x = nx;
+                    exit_y = ny;
+                    found_exit = 1;
+                }
             }
         }
-    } else {
+    }
+
+    if (!found_exit) {
         exit_x = entry_x;
         exit_y = entry_y;
     }
-
 
     scenario_editor_set_entry_point(entry_x, entry_y);
     scenario_editor_set_exit_point(exit_x, exit_y);
