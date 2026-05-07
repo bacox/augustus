@@ -71,7 +71,6 @@ void segment_map(void)
                     if (!terrain_tile_is_segment_passable(next_offset)) {
                         continue;
                     }
-
                     segments[next_offset] = component_id;
                     queue[queue_end++] = next_offset;
                 }

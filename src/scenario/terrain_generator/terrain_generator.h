@@ -8,7 +8,6 @@ typedef enum {
 } terrain_generator_algorithm;
 
 void terrain_generator_generate(terrain_generator_algorithm algorithm);
-
 void terrain_generator_set_seed(int enabled, unsigned int seed);
 
 #endif // SCENARIO_TERRAIN_GENERATOR_H

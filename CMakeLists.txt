@@ -540,6 +540,7 @@ set(SCENARIO_FILES
     ${PROJECT_SOURCE_DIR}/src/scenario/terrain_generator/river_generator.c
     ${PROJECT_SOURCE_DIR}/src/scenario/terrain_generator/river_tools.c
     ${PROJECT_SOURCE_DIR}/src/scenario/terrain_generator/flood_filling.c
+    ${PROJECT_SOURCE_DIR}/src/scenario/terrain_generator/simplex_noise.c
     ${PROJECT_SOURCE_DIR}/src/scenario/emperor_change.c
     ${PROJECT_SOURCE_DIR}/src/scenario/empire.c
     ${PROJECT_SOURCE_DIR}/src/scenario/gladiator_revolt.c

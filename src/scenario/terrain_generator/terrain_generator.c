@@ -79,156 +79,6 @@ static void choose_edge_point(int side, int width, int height, int *x, int *y)
     }
 }
 
-static void adjust_point_to_land(int *x, int *y, int width, int height)
-{
-    int grid_offset = map_grid_offset(*x, *y);
-    if (terrain_tile_is_passable(grid_offset)) {
-        return;
-    }
-
-    for (int radius = 1; radius <= 10; radius++) {
-        for (int dy = -radius; dy <= radius; dy++) {
-            for (int dx = -radius; dx <= radius; dx++) {
-                int nx = *x + dx;
-                int ny = *y + dy;
-                if (!map_grid_is_inside(nx, ny, 1)) {
-                    continue;
-                }
-                int offset = map_grid_offset(nx, ny);
-                if (terrain_tile_is_passable(offset)) {
-                    *x = nx;
-                    *y = ny;
-                    return;
-                }
-            }
-        }
-    }
-}
-
-static int choose_reachable_edge_point(int side, int width, int height, const uint8_t *reachable_land, int *x, int *y)
-{
-    int candidate_x[GRID_SIZE];
-    int candidate_y[GRID_SIZE];
-    int candidate_count = 0;
-
-    if (side == 0 || side == 1) {
-        int edge_y = (side == 0) ? 0 : height - 1;
-        for (int edge_x = 0; edge_x < width; edge_x++) {
-            int offset = map_grid_offset(edge_x, edge_y);
-            if (!reachable_land[offset] || !terrain_tile_is_passable(offset)) {
-                continue;
-            }
-            if (candidate_count >= GRID_SIZE) {
-                break;
-            }
-            candidate_x[candidate_count] = edge_x;
-            candidate_y[candidate_count] = edge_y;
-            candidate_count++;
-        }
-    } else {
-        int edge_x = (side == 2) ? 0 : width - 1;
-        for (int edge_y = 0; edge_y < height; edge_y++) {
-            int offset = map_grid_offset(edge_x, edge_y);
-            if (!reachable_land[offset] || !terrain_tile_is_passable(offset)) {
-                continue;
-            }
-            if (candidate_count >= GRID_SIZE) {
-                break;
-            }
-            candidate_x[candidate_count] = edge_x;
-            candidate_y[candidate_count] = edge_y;
-            candidate_count++;
-        }
-    }
-
-    if (candidate_count <= 0) {
-        return 0;
-    }
-
-    int choice = terrain_generator_random_between(0, candidate_count);
-    *x = candidate_x[choice];
-    *y = candidate_y[choice];
-    return 1;
-}
-
-static int choose_nearest_reachable_point(int start_x, int start_y, int width, int height, const uint8_t *reachable_land, int *x, int *y)
-{
-    int found = 0;
-    int best_distance = 0;
-    int best_x = 0;
-    int best_y = 0;
-
-    for (int ny = 0; ny < height; ny++) {
-        for (int nx = 0; nx < width; nx++) {
-            int offset = map_grid_offset(nx, ny);
-            if (!reachable_land[offset] || !terrain_tile_is_passable(offset)) {
-                continue;
-            }
-
-            int distance = abs(nx - start_x) + abs(ny - start_y);
-            if (!found || distance < best_distance) {
-                found = 1;
-                best_distance = distance;
-                best_x = nx;
-                best_y = ny;
-            }
-        }
-    }
-
-    if (!found) {
-        return 0;
-    }
-
-    *x = best_x;
-    *y = best_y;
-    return 1;
-}
-
-static int choose_farthest_reachable_edge_point(int entry_x, int entry_y, int width, int height, const uint8_t *reachable_land, int *x, int *y)
-{
-    int found = 0;
-    int best_distance = -1;
-    int best_x = entry_x;
-    int best_y = entry_y;
-    int tie_count = 0;
-
-    for (int ny = 0; ny < height; ny++) {
-        for (int nx = 0; nx < width; nx++) {
-            if (nx != 0 && nx != width - 1 && ny != 0 && ny != height - 1) {
-                continue;
-            }
-
-            int offset = map_grid_offset(nx, ny);
-            if (!reachable_land[offset] || !terrain_tile_is_passable(offset)) {
-                continue;
-            }
-
-            int distance = abs(nx - entry_x) + abs(ny - entry_y);
-            if (distance > best_distance) {
-                found = 1;
-                best_distance = distance;
-                best_x = nx;
-                best_y = ny;
-                tie_count = 1;
-            } else if (distance == best_distance) {
-                tie_count++;
-                if (terrain_generator_random_between(0, tie_count) == 0) {
-                    best_x = nx;
-                    best_y = ny;
-                }
-            }
-        }
-    }
-
-    if (!found) {
-        return 0;
-    }
-
-    *x = best_x;
-    *y = best_y;
-    return 1;
-}
-
 int terrain_generator_flood_fill_reachable_land(int start_x, int start_y, uint8_t *reachable_land)
 {
     if (!reachable_land) {
@@ -519,8 +369,6 @@ void terrain_generator_generate(terrain_generator_algorithm algorithm)
         random_set_stdlib_seed(fixed_seed);
     }
 
-
-
     clear_base_terrain();
 
     switch (algorithm) {
@@ -534,7 +382,6 @@ void terrain_generator_generate(terrain_generator_algorithm algorithm)
     }
 
     set_entry_exit_points();
-
     random_clear_stdlib_seed();
 }
 
