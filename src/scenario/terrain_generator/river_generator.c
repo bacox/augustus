@@ -8,6 +8,7 @@
 #include <stdint.h>
 
 #include "simplex_noise.h"
+#include "terrain_generator.h"
 #include "core/log.h"
 
 static unsigned int perlin_seed = 1;
@@ -79,7 +80,7 @@ void setTerrainControlled(double e,
                 int grid_offset,
                 double fertility,   // 0.0 -> barren, 1.0 -> lush
                 double roughness,   // 0.0 -> flat,   1.0 -> mountainous
-                double openness)    // 0.0 -> dense vegetation, 1.0 -> open grassland
+                double openness, int allowed_terrain)    // 0.0 -> dense vegetation, 1.0 -> open grassland
 {
     double rock_threshold = 0.85 - (roughness * 0.35); // More roughness -> more mountains
     double meadow_threshold = 0.75 - (fertility * 0.25); // More fertility -> more meadows
@@ -101,22 +102,22 @@ void setTerrainControlled(double e,
     // log_info("No water because of water threshold", "f", water_threshold);
 
     // Mountains
-    if (e > rock_threshold) {
+    if (allowed_terrain & TERRAIN_ROCK && e > rock_threshold) {
         map_terrain_set_with_tile_update(grid_offset, TERRAIN_ROCK);
         return;
     }
 
     // Vegetation zone
     if (e > 0.40) {
-        if (d > tree_threshold && openness < 0.9) { // Dense vegetation
+        if (allowed_terrain & TERRAIN_TREE && d > tree_threshold && openness < 0.9) { // Dense vegetation
             map_terrain_set_with_tile_update(grid_offset, TERRAIN_TREE);
             return;
         }
-        if (d > meadow_threshold) { // Meadows
+        if (allowed_terrain & TERRAIN_MEADOW && d > meadow_threshold) { // Meadows
             map_terrain_set_with_tile_update(grid_offset, TERRAIN_MEADOW);
             return;
         }
-        if (d > shrub_threshold && openness < 0.95) { // Sparse vegetation
+        if (allowed_terrain & TERRAIN_SHRUB && d > shrub_threshold && openness < 0.95) { // Sparse vegetation
             map_terrain_set_with_tile_update(grid_offset, TERRAIN_SHRUB);
             return;
         }
@@ -125,15 +126,37 @@ void setTerrainControlled(double e,
     }
 
     // Low elevation
-    if (d > meadow_threshold + 0.1 && openness < 0.8) { // Fertile plains -> meadows
+    if (allowed_terrain & TERRAIN_MEADOW && d > meadow_threshold + 0.1 && openness < 0.8) { // Fertile plains -> meadows
         map_terrain_set_with_tile_update(grid_offset, TERRAIN_MEADOW);
         return;
     }
-    if (d > shrub_threshold + 0.05 && openness < 0.7) { // Some shrubs in non-open areas
+    if (allowed_terrain & TERRAIN_SHRUB && d > shrub_threshold + 0.05 && openness < 0.7) { // Some shrubs in non-open areas
         map_terrain_set_with_tile_update(grid_offset, TERRAIN_SHRUB);
         return;
     }
     map_terrain_set_with_tile_update(grid_offset, TERRAIN_CLEAR);
+}
+
+void paint_by_noise(SimplexNoise *noise, double fertility, double roughness, double openness, int allowed_terrain) {
+    double elevation_scale = 0.05; // controls smoothness
+    double detail_scale = 0.08;
+    int width = map_grid_width();
+    int height = map_grid_height();
+    for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+            double elevation = simplex2D_octaves(noise, x * elevation_scale, y * elevation_scale, 5, 0.5, 2.0);
+            double detail    = simplex2D_octaves(noise, x *detail_scale + 100, y *detail_scale + 100, 4, 0.5, 2.0);
+
+            double e = (elevation + 1.0) * 0.5;
+            double d = (detail + 1.0) * 0.5;
+            int grid_offset = map_grid_offset(x, y);
+            if (map_terrain_is(grid_offset, TERRAIN_WATER | TERRAIN_ROAD)) {
+                continue; // Preserve river tiles
+            }
+            setTerrainControlled(e, d, grid_offset,
+            fertility, roughness, openness, allowed_terrain);
+        }
+    }
 }
 
 // Builds a complete terrain pass from base layer through river and biome overlays.
@@ -160,45 +183,45 @@ void terrain_generator_river_map(unsigned int seed)
     double fertility = 0.6;
     double roughness = 0.5;
     double openness = 0.4;
+    log_info("Generate first pass", 0, 1);
+    paint_by_noise(&noise, fertility, roughness, openness, TERRAIN_ROCK | TERRAIN_WATER);
+    log_info("Generate path", 0, 1);
+    set_entry_exit_points();
+    log_info("Generate second pass", 0, 1);
+    paint_by_noise(&noise, fertility, roughness, openness, TERRAIN_ROCK | TERRAIN_WATER| TERRAIN_MEADOW | TERRAIN_SHRUB | TERRAIN_TREE);
 
-    fertility = 0.7;
-    roughness = 0.1;
-    openness  = 0.5;
-
+    // //Lakes
+    // fertility = 0.7;
+    // roughness = 0.1;
+    // openness  = 0.5;
     // // //Alpine
     // // fertility = 0.3;
     // // roughness = 0.9;
     // // openness  = 0.5;
-    //
     // //Plains
     // fertility = 0.5;
     // roughness = 0.1;
     // openness  = 0.9;
-    // //
     // //Forested
     // fertility = 0.9;
     // roughness = 0.4;
     // openness  = 0.1;
 
-    for (int y = 0; y < height; y++) {
-        for (int x = 0; x < width; x++) {
-
-
-            double elevation = simplex2D_octaves(&noise, x * elevation_scale, y * elevation_scale, 5, 0.5, 2.0);
-            double detail    = simplex2D_octaves(&noise, x *detail_scale + 100, y *detail_scale + 100, 4, 0.5, 2.0);
-
-            double e = (elevation + 1.0) * 0.5;
-            double d = (detail + 1.0) * 0.5;
-            int grid_offset = map_grid_offset(x, y);
-            if (map_terrain_is(grid_offset, TERRAIN_WATER)) {
-                continue; // Preserve river tiles
-            }
-
-            // setTerrain(e, d, grid_offset);
-            setTerrainControlled(e, d, grid_offset,
-            fertility, roughness, openness);
-        }
-    }
+    // for (int y = 0; y < height; y++) {
+    //     for (int x = 0; x < width; x++) {
+    //         double elevation = simplex2D_octaves(&noise, x * elevation_scale, y * elevation_scale, 5, 0.5, 2.0);
+    //         double detail    = simplex2D_octaves(&noise, x *detail_scale + 100, y *detail_scale + 100, 4, 0.5, 2.0);
+    //
+    //         double e = (elevation + 1.0) * 0.5;
+    //         double d = (detail + 1.0) * 0.5;
+    //         int grid_offset = map_grid_offset(x, y);
+    //         if (map_terrain_is(grid_offset, TERRAIN_WATER)) {
+    //             continue; // Preserve river tiles
+    //         }
+    //         setTerrainControlled(e, d, grid_offset,
+    //         fertility, roughness, openness, TERRAIN_ROCK | TERRAIN_WATER | TERRAIN_SHRUB);
+    //     }
+    // }
     segment_map();
     // paint_according_to_segments();
 }
