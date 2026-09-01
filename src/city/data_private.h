@@ -196,6 +196,8 @@ extern struct city_data_t {
         int32_t refused_immigrants_today;
         int32_t no_immigration_cause;
         int32_t percentage;
+        int32_t adjust_percentage_immigration;
+        int32_t adjust_percentage_emigration;
         int32_t newcomers;
         int32_t emigration_message_shown;
     } migration;
@@ -222,6 +224,9 @@ extern struct city_data_t {
             int32_t clinic;
             int32_t barber;
             int32_t baths;
+            int32_t wells;
+            int32_t latrines;
+            int32_t fountains;
         } population_access;
     } health;
     struct {

@@ -222,9 +222,14 @@ typedef enum {
     BUILDING_NATIVE_MONUMENT = 208,
     BUILDING_NATIVE_DECORATION = 209,
     BUILDING_REPAIR_LAND = 210, // tool, not an actual building
+    BUILDING_HIGHWAY_STATION = 211,
+    BUILDING_WILLOW_TREE = 212,
     // helper constants
-    BUILDING_TYPE_MAX = 211
+    BUILDING_TYPE_MAX = 213
 } building_type;
+
+/* When adding a new building increment BUILDING_TYPE_MAX
+    and create a new enum entry which is descriptive for the buidling and assign it the obvious value */
 
 /**
  * House levels

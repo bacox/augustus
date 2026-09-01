@@ -49,6 +49,7 @@
 #include "window/building/house.h"
 #include "window/building/military.h"
 #include "window/building/terrain.h"
+#include "window/building/highway_station.h"
 #include "window/building/utility.h"
 
 enum {
@@ -150,7 +151,7 @@ static int get_height_id(void)
         }
 
         switch (b->type) {
-                //256px
+            //256px
             case BUILDING_SMALL_STATUE:
             case BUILDING_MEDIUM_STATUE:
             case BUILDING_LARGE_STATUE:
@@ -186,6 +187,7 @@ static int get_height_id(void)
             case BUILDING_PANELLED_GARDEN_WALL:
             case BUILDING_PALISADE:
             case BUILDING_GLADIATOR_STATUE:
+            case BUILDING_WILLOW_TREE:
                 return HEIGHT_1_16_BLOCKS;
 
                 //288px
@@ -231,6 +233,7 @@ static int get_height_id(void)
             case BUILDING_TRIUMPHAL_ARCH:
             case BUILDING_SHIP_BRIDGE:
             case BUILDING_LOW_BRIDGE:
+            case BUILDING_DEPOT:
                 return HEIGHT_5_24_BLOCKS;
 
                 //608px
@@ -265,6 +268,7 @@ static int get_height_id(void)
             case BUILDING_GRANARY:
             case BUILDING_WAREHOUSE:
             case BUILDING_WAREHOUSE_SPACE:
+            case BUILDING_HIGHWAY_STATION:
                 return HEIGHT_11_28_BLOCKS;
 
                 //240px
@@ -336,6 +340,7 @@ static void init(int grid_offset)
     context.show_special_orders = 0;
     context.depot_selection = 0;
     context.advisor_button = ADVISOR_NONE;
+    context.grid_offset = grid_offset;
     context.building_id = map_building_at(grid_offset);
     context.rubble_building_id = map_building_rubble_building_id(grid_offset);
     context.has_reservoir_pipes = map_terrain_is(grid_offset, TERRAIN_RESERVOIR_RANGE);
@@ -387,7 +392,7 @@ static void init(int grid_offset)
         context.terrain_type = TERRAIN_INFO_RUBBLE;
     } else if (map_terrain_is(grid_offset, TERRAIN_WALL)) {
         context.terrain_type = TERRAIN_INFO_WALL;
-    } else if (map_terrain_is(grid_offset, TERRAIN_HIGHWAY)) {
+    } else if (map_terrain_is(grid_offset, TERRAIN_HIGHWAY) && !context.building_id) {
         context.terrain_type = TERRAIN_INFO_HIGHWAY;
     } else if (!context.building_id) {
         context.terrain_type = TERRAIN_INFO_EMPTY;
@@ -405,7 +410,7 @@ static void init(int grid_offset)
             case BUILDING_FORT_ARCHERS:
                 context.formation_id = b->formation_id;
                 break;
-                case BUILDING_WAREHOUSE_SPACE:
+            case BUILDING_WAREHOUSE_SPACE:
             case BUILDING_HIPPODROME:
                 b = building_main(b);
                 context.building_id = b->id;
@@ -424,7 +429,7 @@ static void init(int grid_offset)
                 break;
         }
         switch (b->type) {
-            //TODO: this information should be derived from b->has_road_access. 
+            //TODO: this information should be derived from b->has_road_access.
             //context information should not differ from building properties
             case BUILDING_GRANARY:
                 context.has_road_access = map_has_road_access_granary(b->x, b->y, 0);
@@ -725,6 +730,8 @@ static void draw_background(void)
             window_building_draw_pantheon(&context);
         } else if (btype == BUILDING_LIGHTHOUSE) {
             window_building_draw_lighthouse(&context);
+        } else if (btype == BUILDING_HIGHWAY_STATION) {
+            window_building_draw_highway_station(&context);
         } else if (btype == BUILDING_GOVERNORS_HOUSE || btype == BUILDING_GOVERNORS_VILLA ||
             btype == BUILDING_GOVERNORS_PALACE) {
             window_building_draw_governor_home(&context);
@@ -766,7 +773,8 @@ static void draw_background(void)
         } else if ((btype >= BUILDING_PINE_TREE && btype <= BUILDING_PAVILION_GREEN) ||
             (btype >= BUILDING_HEDGE_DARK && btype <= BUILDING_HEDGE_LIGHT) ||
             btype == BUILDING_COLONNADE || btype == BUILDING_GARDEN_PATH || btype == BUILDING_LOOPED_GARDEN_WALL ||
-            btype == BUILDING_ROOFED_GARDEN_WALL || btype == BUILDING_PANELLED_GARDEN_WALL) {
+            btype == BUILDING_ROOFED_GARDEN_WALL || btype == BUILDING_PANELLED_GARDEN_WALL ||
+            btype == BUILDING_WILLOW_TREE) {
             window_building_draw_garden(&context);
         } else if (btype == BUILDING_PREFECTURE) {
             window_building_draw_prefect(&context);
@@ -909,7 +917,9 @@ static void draw_foreground(void)
             if (context.show_special_orders) {
                 window_building_draw_roadblock_orders_foreground(&context);
             } else {
-                window_building_draw_roadblock_button(&context);
+                if (!(btype == BUILDING_TRIUMPHAL_ARCH && b->monument.phase != MONUMENT_FINISHED)) {
+                    window_building_draw_roadblock_button(&context);
+                }
             }
         } else if (btype == BUILDING_DOCK) {
             if (context.show_special_orders) {
@@ -951,6 +961,11 @@ static void draw_foreground(void)
         } else {
             window_building_draw_roadblock_button(&context);
         }
+    }
+
+    // Do not display building health (show_durability) in special windows
+    if (!context.show_special_orders && context.depot_selection == 0) {
+        window_building_draw_health(&context);
     }
 
     // general buttons
@@ -1138,10 +1153,15 @@ static void get_tooltip(tooltip_context *c)
     } else if ((context.type == BUILDING_INFO_BUILDING && context.show_special_orders) || building_type_is_bridge(btype)) {
         //bridges are technically terrain, but they have special orders
         if (btype == BUILDING_GRANARY || btype == BUILDING_WAREHOUSE) {
+            precomposed_text = window_building_storage_resource_hover_tooltip(&context);
             if (context.show_special_orders == SPECIAL_ORDERS_ROADBLOCK) {
                 window_building_roadblock_get_tooltip_walker_permissions(&translation);
             } else {
                 window_building_get_tooltip_storage_orders(&group_id, &text_id, &translation);
+            }
+        } else if (btype == BUILDING_TRIUMPHAL_ARCH) {
+            if (b->monument.phase == MONUMENT_FINISHED) {
+                window_building_roadblock_get_tooltip_walker_permissions(&translation);
             }
         } else if (building_type_is_roadblock(btype)) {
             window_building_roadblock_get_tooltip_walker_permissions(&translation);

@@ -226,7 +226,7 @@ int building_warehouse_for_getting(building *src, int resource, map_point *dst);
  * @return ID of the warehouse, or 0 if none found
  */
 int building_warehouse_for_storing(int src_building_id, int x, int y, int resource, int road_network_id,
-                                   int *understaffed, map_point *dst);
+    int *understaffed, map_point *dst);
 
 /**
  * @brief Find a warehouse with the resource, honoring permissions.
@@ -272,12 +272,20 @@ void building_warehouse_recount_resources(building *main);
 
  /**
   * @brief Create a cart pusher to Rome with the requested resources.
-  * TODO: create building_storage helper for this and granary equivalent
+  * TODO: create building_storage helper for this
   * @param resource The resource type
   * @param amount The amount of resource to send
   * @return amount that couldnt be sent, or 0 if all sent
   */
 int building_warehouses_send_resources_to_rome(int resource, int amount);
+
+ /**
+  * @brief Create a cart pusher with the resources needed for a trade route
+  * @param resource The resource type
+  * @param amount The amount of resource to send
+  * @return amount that couldnt be sent, or 0 if all sent
+  */
+int building_warehouses_send_resources_to_trade_route(int resource, int amount);
 
 
 #endif // BUILDING_WAREHOUSE_H

@@ -6,9 +6,13 @@
 
 // make sure to update src/window/building/distribution.c so the number renders correctly
 #define FULL_GRANARY 32
+#define GRANARY_28 28
 #define THREEQUARTERS_GRANARY 24
+#define GRANARY_20 20
 #define HALF_GRANARY 16
+#define GRANARY_12 12
 #define QUARTER_GRANARY 8
+#define GRANARY_4 4
 
 enum {
   GRANARY_TASK_NONE = -1,
@@ -241,6 +245,14 @@ void building_granary_update_built_granaries_capacity(void);
   * @return amount that couldnt be sent, or 0 if all sent
   */
 int building_granaries_send_resources_to_rome(int resource, int amount);
+
+ /**
+  * @brief Create a cart pusher with the resources needed for a trade route
+  * @param resource The resource type
+  * @param amount The amount of resource to send
+  * @return amount that couldnt be sent, or 0 if all sent
+  */
+int building_granaries_send_resources_to_trade_route(int resource, int amount);
 
 /*----------------------*
  * Blessing / Cursing

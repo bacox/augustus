@@ -93,6 +93,18 @@ static const uint8_t *get_text_for_warning(warning_type type)
             return translation_for(TR_WARNING_CANT_REPAIR_MONUMENTS);
         case WARNING_REPAIR_AQUEDUCT:
             return translation_for(TR_WARNING_CANT_REPAIR_AQUEDUCTS);
+        case WARNING_DEPOT_CART_PUSHER_RECALL_ALL:
+            return translation_for(TR_WARNING_DEPOT_RECALL_ALL);
+        case WARNING_DEPOT_RESOURCE_CHANGE:
+            return translation_for(TR_WARNING_DEPOT_RESOURCE_CHANGE);
+        case WARNING_WORKCAMP_NEEDED:
+            return translation_for(TR_CITY_WARNING_WORKCAMP_NEEDED);
+        case WARNING_BUILD_WORKCAMP:
+            return translation_for(TR_CITY_WARNING_BUILD_WORKCAMP);
+        case WARNING_OPEN_WATER_NEEDED_FOR_BUILDING:
+            return translation_for(TR_WARNING_OPEN_WATER_NEEDED_FOR_BUILDING);
+        case WARNING_ENEMIES_PREVENT_BRIDGE_DESTRUCTION:
+            return translation_for(TR_WARNING_ENEMIES_PREVENT_BRIDGE_DESTRUCTION);
         default:
             return lang_get_string(19, type - 2);
     }

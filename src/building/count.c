@@ -58,7 +58,7 @@ static const building_type building_set_grand_temples[] = {
 
 static const building_type building_set_deco_trees[] = {
     BUILDING_PINE_TREE, BUILDING_FIR_TREE, BUILDING_OAK_TREE, BUILDING_ELM_TREE,
-    BUILDING_FIG_TREE, BUILDING_PLUM_TREE, BUILDING_PALM_TREE, BUILDING_DATE_TREE
+    BUILDING_FIG_TREE, BUILDING_PLUM_TREE, BUILDING_PALM_TREE, BUILDING_DATE_TREE, BUILDING_WILLOW_TREE
 };
 
 #define BUILDING_SET_SIZE_DECO_TREES (sizeof(building_set_deco_trees) / sizeof(building_type))
@@ -140,7 +140,8 @@ int building_count_total(building_type type)
     }
     int total = 0;
     for (building *b = building_first_of_type(type); b; b = b->next_of_type) {
-        if ((b->state == BUILDING_STATE_IN_USE || b->state == BUILDING_STATE_CREATED) && b == building_main(b)) {
+        if ((b->state == BUILDING_STATE_IN_USE || b->state == BUILDING_STATE_CREATED ||
+            b->state == BUILDING_STATE_MOTHBALLED) && b == building_main(b)) {
             total++;
         }
     }
@@ -158,7 +159,8 @@ int building_count_any_total(int active_only)
                     total++;
                 }
             } else {
-                if (b->state == BUILDING_STATE_IN_USE || b->state == BUILDING_STATE_CREATED) {
+                if (b->state == BUILDING_STATE_IN_USE || b->state == BUILDING_STATE_CREATED ||
+                    b->state == BUILDING_STATE_MOTHBALLED) {
                     total++;
                 }
             }
@@ -238,7 +240,7 @@ int building_count_fort_type_in_area(int minx, int miny, int maxx, int maxy, bui
             int building_id = map_building_at(grid_offset);
             if (building_id) {
                 building *b = building_main(building_get(building_id));
-                if (!building_is_fort(b->type) || (b->subtype.fort_figure_type != 
+                if (!building_is_fort(b->type) || (b->subtype.fort_figure_type !=
                     building_count_forts_get_figure_type_from_building(type) && type != BUILDING_MENU_FORT)) {
                     continue;
                 }

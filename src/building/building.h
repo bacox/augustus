@@ -7,6 +7,9 @@
 #include "game/resource.h"
 #include "translation/translation.h"
 
+#define BUILDING_WATER_DESIRABILITY_RANGE 3
+#define BUILDING_WATER_DESIRABILITY_BONUS 15
+
 typedef enum order_condition_type {
     ORDER_CONDITION_NEVER = 0,
     ORDER_CONDITION_ALWAYS,
@@ -38,7 +41,7 @@ typedef struct building {
     unsigned char size;
     unsigned char house_is_merged;
     unsigned char house_size;
-    unsigned char x; //these are not grid coordinates but image coordinates
+    unsigned char x; // these are not grid coordinates but image coordinates
     unsigned char y;
     short grid_offset;
     building_type type;
@@ -49,6 +52,7 @@ typedef struct building {
         short fort_figure_type;
         short native_meeting_center_id;
         short barracks_priority;
+        unsigned short instances;
     } subtype;
     unsigned char road_network_id;
     unsigned short created_sequence;
@@ -148,7 +152,7 @@ typedef struct building {
             unsigned char health;
             unsigned char num_gods;
             unsigned char devolve_delay;
-            unsigned char evolve_text_id;
+            unsigned short evolve_text_id;
         } house;
         struct {
             unsigned short og_type;
@@ -165,6 +169,9 @@ typedef struct building {
         struct {
             order current_order;
         } depot;
+        struct {
+            short orientation; // can't be in subtype because there's fort_figure_type already
+        } fort;
     } data;
     struct {
         int upgrades;
@@ -183,7 +190,7 @@ typedef struct building {
         signed char house_happiness;
         signed char native_anger;
     } sentiment;
-    unsigned char show_on_problem_overlay;
+    unsigned char has_problem;
     unsigned char house_tavern_wine_access;
     unsigned char house_tavern_food_access;
     unsigned char house_arena_gladiator;
@@ -224,7 +231,7 @@ building *building_first_of_type(building_type type);
 
 void building_change_type(building *b, building_type type);
 
-building *building_main(building *b);
+building *building_main(const building *b);
 
 building *building_next(building *b);
 
@@ -233,22 +240,24 @@ building *building_create(building_type type, int x, int y);
 int building_was_tent(const building *b);
 
 int building_is_storage(building_type b_type);
+
 /**
  * @brief Repairs a building using it's entry in the buildings array. In cases of warehouses and burning ruins,
  * some information is removed or reset, so data from b->data.rubble is used to help restore the building.
  * in the future, we should implement a more general system for saving and restoring building state.
  * Keeping a building in the array is helpful because it holds the building's ID, and allows keeping the storage structure.
  */
-
-int building_repair(building *b);
+int building_repair_at(int grid_offset);
 
 int building_is_still_burning(building *b);
 
 int building_can_repair(building *b);
 
-int building_repair_cost(building *b);
+int building_repair_cost_at(int grid_offset);
 
 void building_clear_related_data(building *b);
+
+void building_delete(building *b);
 
 building *building_restore_from_undo(building *to_restore);
 
@@ -257,6 +266,8 @@ void building_trim(void);
 void building_update_state(void);
 
 void building_update_desirability(void);
+
+int building_get_elevation_desirability_bonus(int grid_offset);
 
 int building_is_house(building_type type);
 

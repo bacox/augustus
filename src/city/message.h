@@ -191,6 +191,7 @@ typedef enum {
     MESSAGE_ROUTE_PRICE_CHANGE = 161,
     MESSAGE_CARAVANSERAI_COMPLETE = 162,
     MESSAGE_GOVERNOR_RANK_CHANGE = 163,
+    MESSAGE_TRIUMPHAL_ARCH_COMPLETE = 164,
 } city_message_type;
 
 typedef struct {
@@ -258,5 +259,7 @@ void city_message_set_scroll_position(int scroll_position);
 void city_message_save_state(buffer *messages, buffer *extra, buffer *counts, buffer *delays, buffer *population);
 
 void city_message_load_state(buffer *messages, buffer *extra, buffer *counts, buffer *delays, buffer *population);
+
+void city_message_clear_old_messages(void);
 
 #endif // CITY_MESSAGE_H

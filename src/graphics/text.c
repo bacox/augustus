@@ -153,6 +153,29 @@ int text_get_number_width(int value, char prefix, const char *postfix, font_t fo
     return width;
 }
 
+int text_get_number_float_width(float value, int decimal_places, char prefix, const char *postfix, font_t font)
+{
+    const font_definition *def = font_definition_for(font);
+
+    int width = 0;
+
+    if (prefix) {
+        uint8_t prefix_str[2] = { prefix, 0 };
+        width += text_get_width(prefix_str, font);
+    }
+
+    uint8_t buffer[NUMBER_BUFFER_LENGTH];
+    string_from_float(buffer, value, decimal_places, 0);
+    width += text_get_width(buffer, font);
+
+    if (postfix && *postfix) {
+        width += text_get_width(string_from_ascii(postfix), font);
+    } else {
+        width += def->space_width;
+    }
+    return width;
+}
+
 static int get_letter_width(const uint8_t *str, const font_definition *def, int *num_bytes)
 {
     *num_bytes = 1;
@@ -294,6 +317,15 @@ void text_draw_centered(const uint8_t *str, int x, int y, int box_width, font_t 
     text_draw(str, offset + x, y, font, color);
 }
 
+void text_draw_centered_without_bounds(const uint8_t *str, int x, int y, int box_width, font_t font, color_t color)
+{
+    int offset = (box_width - text_get_width(str, font)) / 2;
+    if (offset + x < 0) {
+        offset = 0;
+    }
+    text_draw(str, offset + x, y, font, color);
+}
+
 void text_draw_right_aligned(const uint8_t *str, int x, int y, int box_width, font_t font, color_t color)
 {
     int offset = box_width - text_get_width(str, font);
@@ -397,6 +429,21 @@ static int number_to_string(uint8_t *str, int value, char prefix, const char *po
     return offset;
 }
 
+static int number_float_to_string(uint8_t *str, float value, int decimal_places, char prefix, const char *postfix)
+{
+    int offset = 0;
+    if (prefix) {
+        str[offset++] = prefix;
+    }
+    offset += string_from_float(&str[offset], value, decimal_places, 0);
+    while (*postfix) {
+        str[offset++] = *postfix;
+        postfix++;
+    }
+    str[offset] = 0;
+    return offset;
+}
+
 int text_draw_number_scaled(int value, char prefix, const uint8_t *postfix,
     int x, int y, font_t font, color_t color, float scale)
 {
@@ -450,6 +497,53 @@ int text_draw_number(int value, char prefix, const char *postfix, int x, int y, 
     const uint8_t *ascii_postfix = postfix && *postfix ? string_from_ascii(postfix) : 0;
     return text_draw_number_scaled(value, prefix, ascii_postfix, x, y, font, color, SCALE_NONE);
 }
+
+int text_draw_number_float_scaled(float value, int decimal_places, char prefix, const uint8_t *postfix,
+    int x, int y, font_t font, color_t color, float scale)
+{
+    uint8_t str[NUMBER_BUFFER_LENGTH];
+    number_float_to_string(str, value, decimal_places, prefix, postfix ? (const char *) postfix : "");
+    return text_draw_scaled(str, x, y, font, color, scale);
+}
+
+int text_draw_number_float(float value, int decimal_places, char prefix, const char *postfix,
+    int x, int y, font_t font, color_t color)
+{
+    const uint8_t *ascii_postfix = postfix && *postfix ? string_from_ascii(postfix) : 0;
+    return text_draw_number_float_scaled(value, decimal_places, prefix, ascii_postfix, x, y, font, color, SCALE_NONE);
+}
+
+void text_draw_number_float_centered(float value, int decimal_places, int x_offset, int y_offset, int box_width, font_t font)
+{
+    uint8_t str[NUMBER_BUFFER_LENGTH];
+    number_float_to_string(str, value, decimal_places, 0, "");
+    text_draw_centered(str, x_offset, y_offset, box_width, font, 0);
+}
+
+void text_draw_number_float_centered_prefix(
+    float value, int decimal_places, char prefix, int x_offset, int y_offset, int box_width, font_t font)
+{
+    uint8_t str[NUMBER_BUFFER_LENGTH];
+    number_float_to_string(str, value, decimal_places, prefix, "");
+    text_draw_centered(str, x_offset, y_offset, box_width, font, 0);
+}
+
+void text_draw_number_float_centered_postfix(
+    float value, int decimal_places, const char *postfix, int x_offset, int y_offset, int box_width, font_t font)
+{
+    uint8_t str[NUMBER_BUFFER_LENGTH];
+    number_float_to_string(str, value, decimal_places, 0, postfix ? postfix : "");
+    text_draw_centered(str, x_offset, y_offset, box_width, font, 0);
+}
+
+void text_draw_number_float_centered_colored(
+    float value, int decimal_places, int x_offset, int y_offset, int box_width, font_t font, color_t color)
+{
+    uint8_t str[NUMBER_BUFFER_LENGTH];
+    number_float_to_string(str, value, decimal_places, 0, "");
+    text_draw_centered(str, x_offset, y_offset, box_width, font, color);
+}
+
 
 void text_draw_number_finances(int value, int x, int y, font_t font, color_t color)
 {
@@ -530,6 +624,13 @@ int text_draw_percentage(int value, int x_offset, int y_offset, font_t font)
     uint8_t str[NUMBER_BUFFER_LENGTH];
     number_to_string(str, value, 0, "%");
     return text_draw(str, x_offset, y_offset, font, 0);
+}
+
+void text_draw_percentage_centered(int value, int x_offset, int y_offset, int box_width, font_t font)
+{
+    uint8_t str[NUMBER_BUFFER_LENGTH];
+    number_to_string(str, value, 0, "%");
+    text_draw_centered(str, x_offset, y_offset, box_width, font, 0);
 }
 
 int text_draw_label_and_number(const uint8_t *label, int value, const char *postfix, int x_offset, int y_offset, font_t font, color_t color)
@@ -635,7 +736,9 @@ int text_draw_multiline(const uint8_t *str, int x_offset, int y_offset, int box_
 int text_measure_multiline(const uint8_t *str, int box_width, font_t font, int *largest_width)
 {
     // \n is not counted as a word and is only caught it directly after a word: "word \n" won't work correctly
-    *largest_width = 0;
+    if (largest_width) {
+        *largest_width = 0;
+    }
     int has_more_characters = 1;
     int guard = 0;
     int num_lines = 0;
@@ -669,12 +772,26 @@ int text_measure_multiline(const uint8_t *str, int box_width, font_t font, int *
                 }
             }
         }
-        if (current_width > *largest_width) {
+        if (largest_width && current_width > *largest_width) {
             *largest_width = current_width;
         }
         num_lines += 1;
     }
     return num_lines;
+}
+
+int text_draw_vertically_centered(const uint8_t *str,
+    int x_offset, int y_offset, int box_width, font_t font, color_t color)
+{
+    int line_height = font_definition_for(font)->line_height;
+    if (line_height < 11) {
+        line_height = 11;
+    }
+    int added_lines = text_measure_multiline(str, box_width, font, 0) - 1;
+
+    int adjusted_y_offset = (int)(y_offset - (added_lines / 2.0) * (line_height + 5));
+
+    return text_draw_multiline(str, x_offset, adjusted_y_offset, box_width, 0, font, color);
 }
 
 void text_draw_build_menu_with_index(const uint8_t *str, int index, int x_offset, int y_offset, int box_width, font_t font, color_t color)

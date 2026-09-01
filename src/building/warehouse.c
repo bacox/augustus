@@ -504,7 +504,7 @@ int building_warehouses_count_available_resource(int resource, int respect_maint
             continue;
         }
         if (!respect_maintaining ||
-            building_storage_get_state(b, resource, 1) != BUILDING_STORAGE_STATE_MAINTAINING ||
+            building_storage_get_state(b, resource, 1) < BUILDING_STORAGE_STATE_MAINTAINING ||
             building_storage_get_empty_all(b->id)) {
             total += building_warehouse_get_amount(b, resource);
         }
@@ -526,10 +526,11 @@ static void try_create_cart_to_rome(building *b, int resource, int loads)
 
 int building_warehouses_send_resources_to_rome(int resource, int amount)
 {
-    // first go for non-getting, non-maintaining warehouses with caesar permission
+    // first go for emptying or non-getting, non-maintaining warehouses with caesar permission
     for (building *b = building_first_of_type(BUILDING_WAREHOUSE); b && amount; b = b->next_of_type) {
         if (b->state == BUILDING_STATE_IN_USE) {
-            if (building_storage_get_state(b, resource, 1) < BUILDING_STORAGE_STATE_GETTING &&
+            if ((building_storage_get_empty_all(b->id) ||
+                 building_storage_get_state(b, resource, 1) < BUILDING_STORAGE_STATE_GETTING) &&
                 building_storage_get_permission(BUILDING_STORAGE_PERMISSION_CAESAR, b)) {
                 int taken_loads = building_warehouse_try_remove_resource(b, resource, amount);
                 amount -= taken_loads;
@@ -552,6 +553,38 @@ int building_warehouses_send_resources_to_rome(int resource, int amount)
                 if (taken_loads) {
                     try_create_cart_to_rome(b, resource, taken_loads);
                 }
+            }
+        }
+    }
+    return amount;
+}
+
+int building_warehouses_send_resources_to_trade_route(int resource, int amount)
+{
+    // first go for emptying or non-getting, non-maintaining warehouses with caesar permission
+    for (building *b = building_first_of_type(BUILDING_WAREHOUSE); b && amount; b = b->next_of_type) {
+        if (b->state == BUILDING_STATE_IN_USE) {
+            if ((building_storage_get_empty_all(b->id) ||
+                 building_storage_get_state(b, resource, 1) < BUILDING_STORAGE_STATE_GETTING) &&
+                building_storage_get_permission(BUILDING_STORAGE_PERMISSION_CAESAR, b)) {
+                int taken_loads = building_warehouse_try_remove_resource(b, resource, amount);
+                amount -= taken_loads;
+                if (taken_loads) {
+                    try_create_cart_to_rome(b, resource, taken_loads);
+                }
+            }
+        }
+    }
+    if (amount <= 0) {
+        return 0;
+    }
+    // if that doesn't work, take it anyway
+    for (building *b = building_first_of_type(BUILDING_WAREHOUSE); b && amount; b = b->next_of_type) {
+        if (b->state == BUILDING_STATE_IN_USE) {
+            int taken_loads = building_warehouse_try_remove_resource(b, resource, amount);
+            amount -= taken_loads;
+            if (taken_loads) {
+                try_create_cart_to_rome(b, resource, taken_loads);
             }
         }
     }
@@ -797,7 +830,7 @@ int building_warehouse_determine_worker_task(building *warehouse, int *resource)
     for (int r = RESOURCE_MIN_FOOD; r < RESOURCE_MAX_FOOD; r++) {
         if (warehouse->resources[r] <= 0 || !resource_is_food(r) || city_resource_is_stockpiled(r) ||
             building_storage_get_state(warehouse, r, 1) == BUILDING_STORAGE_STATE_MAINTAINING) {
-            continue; // skip if no resource, not food,maintaining, stockpiled 
+            continue; // skip if no resource, not food,maintaining, stockpiled
         }
         if (building_granary_get_granary_needing_food(warehouse, r, 1)) {
             *resource = r;

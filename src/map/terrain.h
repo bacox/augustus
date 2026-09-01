@@ -4,8 +4,8 @@
 #include <stdint.h>
 #include "core/buffer.h"
 
-#define TERRAIN_LAST_FLAG TERRAIN_HIGHWAY_BOTTOM_RIGHT
-#define TERRAIN_NUM_FLAGS  (21)  // bits
+#define TERRAIN_LAST_FLAG TERRAIN_SHALLOW_WATER
+#define TERRAIN_NUM_FLAGS  (22)  // bits
 #define KEY_MAX_LEN 32 // max length of a single key - only debugging purposes
 
 enum {
@@ -31,6 +31,7 @@ enum {
     TERRAIN_HIGHWAY_BOTTOM_LEFT = 1 << 18,
     TERRAIN_HIGHWAY_TOP_RIGHT = 1 << 19,
     TERRAIN_HIGHWAY_BOTTOM_RIGHT = 1 << 20,
+    TERRAIN_SHALLOW_WATER = 1 << 21,
 
     // Combined
     TERRAIN_HIGHWAY = TERRAIN_HIGHWAY_TOP_LEFT | TERRAIN_HIGHWAY_BOTTOM_LEFT |
@@ -95,6 +96,11 @@ void map_terrain_add(int grid_offset, int terrain);
 
 void map_terrain_remove(int grid_offset, int terrain);
 
+// Same as map_terrain_remove, but also clears the bits from the terrain backup
+// so a subsequent map_terrain_restore() (preview undo or user undo) does not
+// reintroduce them. Used for changes that should persist past undo.
+void map_terrain_remove_with_backup(int grid_offset, int terrain);
+
 void map_terrain_add_with_radius(int x, int y, int size, int radius, int terrain);
 
 void map_terrain_remove_with_radius(int x, int y, int size, int radius, int terrain);
@@ -105,19 +111,19 @@ void map_terrain_remove_all(int terrain);
  * Check orthogonal neighbours of a tile if they contain a terrain.
  * @param grid_offset Tile which neighbours will be checked.
  * @param terrain Terrain bitmask to be checked for.
- * @return 1 if any orthogonal tiles matches at least one terrain from the bitmask, 0 otherwise.
+ * @return The number of orthogonal neighbours that match the terrain bitmask.
  */
-int map_terrain_count_directly_adjacent_with_type(int grid_offset, int terrain);
+unsigned int map_terrain_count_directly_adjacent_with_type(int grid_offset, int terrain);
 
 /**
  * Check orthogonal neighbours of a tile if they contain a terrain.
  * @param grid_offset Tile which neighbours will be checked.
  * @param terrain_sum Terrain bitmask to be checked for.
- * @return 1 if any orthogonal tiles matches all terrains from the bitmask, 0 otherwise.
+ * @return The number of orthogonal neighbours that match all terrains from the bitmask.
  */
-int map_terrain_count_directly_adjacent_with_types(int grid_offset, int terrain_sum);
+unsigned int map_terrain_count_directly_adjacent_with_types(int grid_offset, int terrain_sum);
 
-int map_terrain_count_diagonally_adjacent_with_type(int grid_offset, int terrain);
+unsigned int map_terrain_count_diagonally_adjacent_with_type(int grid_offset, int terrain);
 
 int map_terrain_has_adjacent_x_with_type(int grid_offset, int terrain);
 
@@ -126,6 +132,8 @@ int map_terrain_has_adjacent_y_with_type(int grid_offset, int terrain);
 int map_terrain_exists_tile_in_area_with_type(int x, int y, int size, int terrain);
 
 int map_terrain_exists_tile_in_radius_with_type(int x, int y, int size, int radius, int terrain);
+
+int map_terrain_exists_open_water_in_radius(int x, int y, int size, int radius);
 
 int map_terrain_exists_rock_in_radius(int x, int y, int size, int radius);
 
@@ -163,7 +171,7 @@ void map_terrain_save_state_legacy(buffer *buf);
 
 void map_terrain_migrate_old_bridges(void);
 
-void map_terrain_migrate_old_walls(void);
+void map_terrain_migrate_shared_buildings(void);
 
 void map_terrain_load_state(buffer *buf, int expanded_terrain_data, buffer *images, int legacy_image_buffer);
 

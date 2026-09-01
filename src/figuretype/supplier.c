@@ -6,10 +6,12 @@
 #include "building/granary.h"
 #include "building/market.h"
 #include "building/storage.h"
+#include "building/highway_station.h"
 #include "building/warehouse.h"
 #include "core/config.h"
 #include "core/image.h"
 #include "city/data_private.h"
+#include "city/finance.h"
 #include "figure/combat.h"
 #include "figure/image.h"
 #include "figure/movement.h"
@@ -81,6 +83,7 @@ static int take_food_from_granary(figure *f, int market_id, int granary_id)
         return 0;
     }
     int amount_taken = building_granary_try_remove_resource(granary, resource, granary_loads_take);
+    city_finance_trade_ledger_add_consumed(resource, amount_taken);
 
     // create delivery boys
     int type = FIGURE_DELIVERY_BOY;
@@ -112,6 +115,9 @@ static int take_resource_from_generic_building(figure *f, int building_id)
         return 0;
     }
     b->resources[RESOURCE_WINE] -= num_loads;
+    //TODO!!: no generic b->resources manipulation is allowed - use storage buildings APIs instead.
+    int units_taken = num_loads * RESOURCE_ONE_LOAD;
+    city_finance_trade_ledger_add_consumed(RESOURCE_WINE, units_taken);
 
     // create delivery boys
     int priest_id = f->id;
@@ -129,7 +135,8 @@ static int take_resource_from_warehouse(figure *f, int warehouse_id, int max_amo
         return take_resource_from_generic_building(f, warehouse_id);
     }
     int num_loads;
-    int stored = building_warehouse_get_available_amount(warehouse, f->collecting_item_id);
+    resource_type resource = f->collecting_item_id;
+    int stored = building_warehouse_get_available_amount(warehouse, resource);
     if (stored < max_amount) {
         num_loads = stored;
     } else {
@@ -138,13 +145,22 @@ static int take_resource_from_warehouse(figure *f, int warehouse_id, int max_amo
     if (num_loads <= 0) {
         return 0;
     }
-    building_warehouse_try_remove_resource(warehouse, f->collecting_item_id, num_loads);
+    int amount_taken = building_warehouse_try_remove_resource(warehouse, resource, num_loads);
+    int amount_taken_units = amount_taken * RESOURCE_ONE_LOAD;
+    city_finance_trade_ledger_add_consumed(resource, amount_taken_units);
+    if (amount_taken <= 0) {
+        return 0;
+    }
 
-    // create delivery boys
-    if (f->type != FIGURE_LIGHTHOUSE_SUPPLIER) {
+    // Track how many loads the supplier is carrying so the return code knows
+    // how much to deposit. Lighthouse and Highway Station don't spawn delivery boys.
+    if (f->type == FIGURE_LIGHTHOUSE_SUPPLIER || f->type == FIGURE_HIGHWAY_STATION_SUPPLIER) {
+        f->loads_sold_or_carrying = amount_taken;
+    } else {
+        // create delivery boys (one per load above the first)
         int supplier_id = f->id;
         int boy1 = figure_supplier_create_delivery_boy(supplier_id, supplier_id, FIGURE_DELIVERY_BOY);
-        if (num_loads > 1) {
+        if (amount_taken > 1) {
             figure_supplier_create_delivery_boy(boy1, supplier_id, FIGURE_DELIVERY_BOY);
         }
     }
@@ -255,7 +271,14 @@ void figure_supplier_action(figure *f)
                 f->previous_tile_y = f->y;
                 int id = f->id;
                 if (!resource_is_food(f->collecting_item_id)) {
-                    int max_amount = f->type == FIGURE_LIGHTHOUSE_SUPPLIER ? 1 : 2;
+                    int max_amount;
+                    if (f->type == FIGURE_LIGHTHOUSE_SUPPLIER) {
+                        max_amount = 1;
+                    } else if (f->type == FIGURE_HIGHWAY_STATION_SUPPLIER) {
+                        max_amount = 4; // larger trips so monthly consumption can keep accumulating
+                    } else {
+                        max_amount = 2;
+                    }
                     if (!take_resource_from_warehouse(f, f->destination_building_id, max_amount)) {
                         f->state = FIGURE_STATE_DEAD;
                     }
@@ -289,6 +312,13 @@ void figure_supplier_action(figure *f)
             if (f->direction == DIR_FIGURE_AT_DESTINATION || f->direction == DIR_FIGURE_LOST) {
                 if (f->direction == DIR_FIGURE_AT_DESTINATION && f->type == FIGURE_LIGHTHOUSE_SUPPLIER) {
                     building_get(f->building_id)->resources[RESOURCE_TIMBER] += 100;
+                } else if (f->direction == DIR_FIGURE_AT_DESTINATION && f->type == FIGURE_HIGHWAY_STATION_SUPPLIER) {
+                    if (f->collecting_item_id == RESOURCE_STONE || f->collecting_item_id == RESOURCE_SAND) {
+                        int loads = f->loads_sold_or_carrying ? f->loads_sold_or_carrying : 1;
+                        building *target = building_get(f->building_id);
+                        target->resources[f->collecting_item_id] += loads * 100;
+                        building_highway_station_refresh_graphic(target);
+                    }
                 }
                 f->state = FIGURE_STATE_DEAD;
             } else if (f->direction == DIR_FIGURE_REROUTE) {
@@ -326,7 +356,7 @@ void figure_supplier_action(figure *f)
             f->image_id = assets_get_image_id("Walkers", "Barkeep NE 01") +
                 dir * 12 + f->image_offset;
         }
-    } else if (f->type == FIGURE_LIGHTHOUSE_SUPPLIER) {
+    } else if (f->type == FIGURE_LIGHTHOUSE_SUPPLIER || f->type == FIGURE_HIGHWAY_STATION_SUPPLIER) {
         if (f->action_state == FIGURE_ACTION_146_SUPPLIER_RETURNING) {
             f->cart_image_id = resource_get_data(f->collecting_item_id)->image.cart.single_load;
         } else {

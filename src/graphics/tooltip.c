@@ -1,5 +1,6 @@
 #include "tooltip.h"
 
+#include "building/building.h"
 #include "city/labor.h"
 #include "city/ratings.h"
 #include "city/view.h"
@@ -156,6 +157,7 @@ static void draw_button_tooltip(tooltip_context *c)
     const uint8_t *text = get_tooltip_text(c);
     int width = 200;
     int largest_width;
+
     int lines = text_measure_multiline(text, width - 16, FONT_SMALL_PLAIN, &largest_width);
     if (lines > 2) {
         width = 300;
@@ -254,7 +256,6 @@ static void draw_overlay_tooltip(tooltip_context *c)
     const uint8_t *text = get_tooltip_text(c);
     int width = 200;
     int largest_width;
-
     int lines = text_measure_multiline(text, width - 16, FONT_SMALL_PLAIN, &largest_width);
     if (lines > 2) {
         width = 300;
@@ -262,6 +263,7 @@ static void draw_overlay_tooltip(tooltip_context *c)
     }
     width = largest_width + 16;
     int height = 16 * lines + 10;
+    width = largest_width + 16;
 
 
     int x, y;
@@ -438,8 +440,8 @@ static void draw_tile_tooltip(tooltip_context *c)
                 height = 61;
                 break;
             case 3: // terrain flags and other info included
-                width = 160;
-                height = 61 + (b_id_at ? 14 : 0) + (rubble_id_at ? 14 : 0) + (num_flags * 14);
+                width = 160 + (b_id_at ? 60 : 0);
+                height = 61 + (b_id_at ? 28 : 0) + (rubble_id_at ? 14 : 0) + (num_flags * 14);
                 break;
             case 2:
                 width = 90;
@@ -490,13 +492,20 @@ static void draw_tile_tooltip(tooltip_context *c)
             if (b_id_at) {
                 int drawn_width = text_draw_label_and_number(string_from_ascii("b_grid: "), b_id_at,
                 "", 2, y_offset, FONT_SMALL_PLAIN, COLOR_TOOLTIP);
-                text_draw_label_and_number(string_from_ascii(" (type: "), map_building_type_at(grid_offset),
+                drawn_width += text_draw_label_and_number(string_from_ascii(" (type: "), map_building_type_at(grid_offset),
+                    ")", 2 + drawn_width, y_offset, FONT_SMALL_PLAIN, COLOR_TOOLTIP);
+                text_draw_label_and_number(string_from_ascii(" (state: "), building_get(b_id_at)->state,
                     ")", 2 + drawn_width, y_offset, FONT_SMALL_PLAIN, COLOR_TOOLTIP);
                 y_offset += 14;
             }
             if (map_building_rubble_building_id(grid_offset)) {
                 text_draw_label_and_number(string_from_ascii("r_grid: "), map_building_rubble_building_id(grid_offset),
                 "", 2, y_offset, FONT_SMALL_PLAIN, COLOR_TOOLTIP);
+                y_offset += 14;
+            }
+            if (b_id_at) {
+                text_draw_label_and_number(string_from_ascii("rotation: "), building_get(b_id_at)->subtype.orientation,
+                    "", 2, y_offset, FONT_SMALL_PLAIN, COLOR_TOOLTIP);
                 y_offset += 14;
             }
             for (int i = 0; i < num_flags; i++) {
@@ -526,7 +535,7 @@ static void draw_tile_tooltip(tooltip_context *c)
 static void draw_tooltip(tooltip_context *c)
 {
     if (config_get(CONFIG_DEBUG_START_WITH_TOOLTIP)) {
-
+        // what did he mean by that
     }
     if (c->type == TOOLTIP_BUTTON) {
         draw_button_tooltip(c);
@@ -554,4 +563,43 @@ void tooltip_handle(const mouse *m, void (*func)(tooltip_context *))
         draw_tooltip(&context);
         reset_tooltip(&context);
     }
+}
+
+void tooltip_copy_context(tooltip_context *dst, const tooltip_context *src)
+{
+    if (!dst || !src) {
+        return;
+    }
+
+    dst->type = src->type;
+    dst->high_priority = src->high_priority;
+    dst->text_group = src->text_group;
+    dst->text_id = src->text_id;
+    dst->has_numeric_prefix = src->has_numeric_prefix;
+    dst->numeric_prefix = src->numeric_prefix;
+
+    dst->num_extra_values = src->num_extra_values;
+    for (int i = 0; i < TOOLTIP_MAX_EXTRA_VALUES; i++) {
+        dst->extra_value_text_groups[i] = src->extra_value_text_groups[i];
+        dst->extra_value_text_ids[i] = src->extra_value_text_ids[i];
+    }
+
+    dst->translation_key = src->translation_key;
+    dst->num_extra_texts = src->num_extra_texts;
+    dst->extra_text_type = src->extra_text_type;
+
+    for (int i = 0; i < TOOLTIP_MAX_EXTRA_VALUES; i++) {
+        dst->extra_text_groups[i] = src->extra_text_groups[i];
+        dst->extra_text_ids[i] = src->extra_text_ids[i];
+    }
+
+    dst->precomposed_text = src->precomposed_text;
+}
+
+int tooltip_context_is_empty(const tooltip_context *c)
+{
+    return c->type == 0
+        && c->text_group == 0
+        && c->translation_key == 0
+        && c->precomposed_text == NULL;
 }

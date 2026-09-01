@@ -38,13 +38,16 @@
     not used for certain types of structure. e.g. non-combat figures don't use 'wait_ticks_next_target', so to avoid
     adding a new property, this property was used to store number of ticks to wait before changing destination for cartpushers.
     If are using a property in non-original way, please make sure to leave a comment explaining the change.
+9.  When adding something like a new building or a new figure ALWAYS increase the save game version. Even if you don't add any new data in structs
+    you add a new possible value in an enum at least and if an older version of augustus loads the map because it's the same save version
+    but then encounters the new value it won't know what to do with it.
 
 If you are unsure about anything regarding the savegame versioning, please ask on github or discord.
 **********************************************************************************************************************/
 
 typedef enum {
 
-    SAVE_GAME_CURRENT_VERSION = 0xac,
+    SAVE_GAME_CURRENT_VERSION = 0xbd,
 
     SAVE_GAME_LAST_ORIGINAL_LIMITS_VERSION = 0x66,
     SAVE_GAME_LAST_SMALLER_IMAGE_ID_VERSION = 0x76,
@@ -62,7 +65,7 @@ typedef enum {
     SAVE_GAME_LAST_ZIP_COMPRESSION = 0x88,
     SAVE_GAME_LAST_ENEMY_ARMIES_BUFFER_BUG = 0x89,
     SAVE_GAME_LAST_BARRACKS_TOWER_SENTRY_REQUEST = 0x8a,
-    // SAVE_GAME_LAST_WITHOUT_HIGHWAYS = 0x8b, no actual changes to how games are saved. Crudelios just wants this here 
+    // SAVE_GAME_LAST_WITHOUT_HIGHWAYS = 0x8b, no actual changes to how games are saved. Crudelios just wants this here
     SAVE_GAME_LAST_UNVERSIONED_SCENARIOS = 0x8c,
     SAVE_GAME_LAST_EMPIRE_RESOURCES_ALWAYS_WRITE = 0x8d,
     // the difference between this version and UNVERSIONED_SCENARIOS above is this one actually saves the scenario version
@@ -96,11 +99,28 @@ typedef enum {
     SAVE_GAME_LAST_U16_GRIDS = 0xa8,
     SAVE_GAME_LAST_NO_FORMULAS_AND_MODEL_DATA = 0xa9,
     SAVE_GAME_LAST_STATIC_PATHS_AND_ROUTES = 0xaa,
-    SAVE_GAME_LAST_NO_EMPIRE_EDITOR = 0xab
+    SAVE_GAME_LAST_NO_EMPIRE_EDITOR = 0xab,
+    SAVE_GAME_LAST_LIMITED_ROUTE_COST = 0xac,
+    SAVE_GAME_LAST_NO_WATER_IN_ADVISORS = 0xad,
+    SAVE_GAME_LAST_NO_SHARED_BUILDINGS = 0xae,
+    SAVE_GAME_LAST_NO_PLEBIANS = 0xaf,
+    SAVE_GAME_LAST_NO_DOG = 0xb0,
+    SAVE_GAME_LAST_ALTAR_ROTATION_FIX = 0xb1,
+    SAVE_GAME_LAST_NO_HIGHWAY_STATION = 0xb2,
+    SAVE_GAME_LAST_NO_TRIUMPHAL_ARCH_MONUMENT = 0xb3,
+    SAVE_GAME_LAST_NO_FORT_ORIENTATION = 0xb4,
+    SAVE_GAME_LAST_NO_LEDGER = 0xb5, // only existed in test versions, never on master.
+    SAVE_GAME_LAST_NO_FINANCE_OVERVIEW_HISTORY = 0xb6,
+    SAVE_GAME_LAST_NO_HOUSE_MODELS = 0xb7,
+    SAVE_GAME_LAST_NO_FIXED_FOURTH_RELIGIONS = 0xb8,
+    SAVE_GAME_LAST_NO_FIXED_CITY_DATA_SIZE = 0xb9,
+    SAVE_GAME_LAST_NO_BUFFER_SIZE_IN_MODEL_DATA = 0xba,
+    SAVE_GAME_LAST_NO_WILLOW_TREE = 0xbb,
+    SAVE_GAME_LAST_NO_SHALLOWS = 0xbc
 } savegame_version_t;
 
 typedef enum {
-    SCENARIO_CURRENT_VERSION = 21,
+    SCENARIO_CURRENT_VERSION = 26,
 
     SCENARIO_VERSION_NONE = 0,
     SCENARIO_LAST_UNVERSIONED = 1,
@@ -123,7 +143,11 @@ typedef enum {
     SCENARIO_LAST_NO_VISIBLE_CUSTOM_VARIABLES = 18,
     SCENARIO_LAST_NO_FORMULAS_AND_MODEL_DATA = 19,
     SCENARIO_LAST_NO_EMPIRE_EDITOR = 20,
-
+    SCENARIO_LAST_LIMITED_ROUTE_COST = 21,
+    SCENARIO_LAST_NO_HOUSE_MODELS = 22,
+    SCENARIO_LAST_NO_BUFFER_SIZE_IN_MODEL_DATA = 23,
+    SCENARIO_LAST_NO_WILLOW_TREE = 24,
+    SCENARIO_LAST_LEGACY_TERRAIN = 25
 } scenario_version_t;
 
 typedef enum {

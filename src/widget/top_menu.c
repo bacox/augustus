@@ -30,7 +30,7 @@
 #include "scenario/criteria.h"
 #include "scenario/event/controller.h"
 #include "scenario/property.h"
-#include "widget/city.h"
+#include "widget/city/city.h"
 #include "window/advisors.h"
 #include "window/advisor/health.h"
 #include "window/city.h"
@@ -894,7 +894,6 @@ static void replay_map_confirmed(int confirmed, int checked)
         scenario_save_campaign_player_name();
         window_mission_selection_show_again();
     }
-    model_reset();
     scenario_events_process_all();
 }
 

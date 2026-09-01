@@ -1,6 +1,7 @@
 #include "game.h"
 
 #include "assets/assets.h"
+#include "building/monument.h"
 #include "building/properties.h"
 #include "city/view.h"
 #include "core/config.h"
@@ -43,9 +44,34 @@ static void errlog(const char *msg)
     log_error(msg, 0, 0);
 }
 
-static encoding_type update_encoding(void)
+// Saves the last successfully detected game language so the editor can fall back to it
+// if language detection fails (e.g. if c3.eng is temporarily unavailable).
+static language_type saved_game_language = LANGUAGE_UNKNOWN;
+
+static encoding_type update_encoding(int is_editor)
 {
-    language_type language = locale_determine_language();
+    language_type language;
+    if (!is_editor) {
+        language = locale_determine_language();
+        if (language != LANGUAGE_UNKNOWN) {
+            saved_game_language = language;
+        }
+    } else {
+        // In editor mode, c3_map.eng has different group-1/index-1 content that does
+        // not represent a language tag, so locale_determine_language() misidentifies it.
+        // Temporarily load c3.eng to detect the language correctly, then reload c3_map.eng
+        // so that game option language changes while the editor is open are also handled.
+        if (lang_load(0)) {
+            language = locale_determine_language();
+            if (language != LANGUAGE_UNKNOWN) {
+                saved_game_language = language;
+            }
+            if (!lang_load(1)) {
+                errlog("'c3_map.eng' or 'c3_map_mm.eng' files not found or too large.");
+            }
+        }
+        language = saved_game_language;
+    }
     encoding_type encoding = encoding_determine(language);
     log_info("Detected encoding:", 0, encoding);
     font_set_encoding(encoding);
@@ -66,7 +92,7 @@ int game_pre_init(void)
         errlog("'c3.eng' or 'c3_mm.eng' files not found or too large.");
         return 0;
     }
-    update_encoding();
+    update_encoding(0);
     random_init();
     return 1;
 }
@@ -104,6 +130,7 @@ int game_init(void)
     }
 
     model_reset();
+    building_monument_reset_stages();
 
     building_properties_init();
     load_augustus_messages();
@@ -146,7 +173,7 @@ static int reload_language(int is_editor, int reload_images)
         }
         return 0;
     }
-    encoding_type encoding = update_encoding();
+    encoding_type encoding = update_encoding(is_editor);
     if (!is_editor) {
         load_augustus_messages();
     }

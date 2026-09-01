@@ -21,8 +21,8 @@
 #define FIGURE_ARRAY_SIZE_STEP 1000
 
 #define FIGURE_ORIGINAL_BUFFER_SIZE 128
-#define FIGURE_CURRENT_BUFFER_SIZE 170
-// around 12 bytes left free in the current buffer size - save version 0xa7, August 2025
+#define FIGURE_CURRENT_BUFFER_SIZE 171
+
 static struct {
     int created_sequence;
     array(figure) figures;
@@ -86,6 +86,7 @@ void figure_delete(figure *f)
         case FIGURE_MESS_HALL_SUPPLIER:
         case FIGURE_CARAVANSERAI_SUPPLIER:
         case FIGURE_LIGHTHOUSE_SUPPLIER:
+        case FIGURE_HIGHWAY_STATION_SUPPLIER:
             if (f->building_id && f->id == b->figure_id2) {
                 b->figure_id2 = 0;
             } else if (f->building_id && f->id == b->figure_id) {
@@ -147,6 +148,8 @@ void figure_delete(figure *f)
         case FIGURE_ZEBRA:
         case FIGURE_DELIVERY_BOY:
         case FIGURE_PATRICIAN:
+        case FIGURE_PLEBIAN:
+        case FIGURE_DOG:
         case FIGURE_MESS_HALL_COLLECTOR:
         case FIGURE_TRADE_SHIP:
             // nothing to do here
@@ -436,7 +439,7 @@ static void figure_save(buffer *buf, const figure *f)
     buffer_write_u8(buf, f->phrase_sequence_exact);
     buffer_write_i8(buf, f->phrase_id);
     buffer_write_u8(buf, f->phrase_sequence_city);
-    buffer_write_u8(buf, f->trader_id);
+    buffer_write_u16(buf, f->trader_id);
     buffer_write_u8(buf, f->wait_ticks_next_target);
     buffer_write_u8(buf, f->dont_draw_elevated);
     buffer_write_u16(buf, f->target_figure_id);
@@ -581,7 +584,7 @@ static void figure_load(buffer *buf, figure *f, int figure_buf_size, int version
     f->phrase_sequence_exact = buffer_read_u8(buf);
     f->phrase_id = buffer_read_i8(buf);
     f->phrase_sequence_city = buffer_read_u8(buf);
-    f->trader_id = buffer_read_u8(buf);
+    f->trader_id = (version > SAVE_GAME_LAST_NO_LEDGER) ? buffer_read_u16(buf) : buffer_read_u8(buf);
     f->wait_ticks_next_target = buffer_read_u8(buf);
     f->dont_draw_elevated = buffer_read_u8(buf);
     f->target_figure_id = buffer_read_u16(buf);

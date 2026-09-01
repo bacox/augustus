@@ -58,6 +58,7 @@ typedef struct {
     building_info_type type;
     terrain_info_type terrain_type;
     int advisor_button;
+    int grid_offset;
     int rubble_building_id;
     int show_special_orders;
     struct {
@@ -98,5 +99,7 @@ void window_building_draw_monument_construction_process(building_info_context *c
 void window_building_draw_risks(building_info_context *c, int x_offset, int y_offset);
 
 void window_building_get_risks_tooltip(const building_info_context *c, int *group_id, int *text_id);
+
+void window_building_draw_health(building_info_context *c);
 
 #endif // WINDOW_BUILDING_COMMON_H

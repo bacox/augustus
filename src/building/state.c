@@ -1,10 +1,14 @@
 #include "state.h"
 
+#include "assets/assets.h"
 #include "building/industry.h"
 #include "building/monument.h"
 #include "building/roadblock.h"
 #include "figure/figure.h"
 #include "game/save_version.h"
+#include "map/building.h"
+#include "map/grid.h"
+#include "map/image.h"
 
 #define TYPE_DATA_ORIGINAL_BUFFER_SIZE 42
 #define TYPE_DATA_CURRENT_BUFFER_SIZE 26
@@ -67,7 +71,8 @@ static void write_type_data(buffer *buf, const building *b)
         buffer_write_u8(buf, b->data.house.health);
         buffer_write_u8(buf, b->data.house.num_gods);
         buffer_write_u8(buf, b->data.house.devolve_delay);
-        buffer_write_u8(buf, b->data.house.evolve_text_id);
+        buffer_write_u16(buf, b->data.house.evolve_text_id);
+        // has to be u16 since custom translation keys are stored in there too
     } else if (b->type == BUILDING_CARAVANSERAI || b->type == BUILDING_LARGE_TEMPLE_CERES ||
         b->type == BUILDING_LARGE_TEMPLE_VENUS) {
         buffer_write_u8(buf, b->data.market.fetch_inventory_id);
@@ -120,6 +125,8 @@ static void write_type_data(buffer *buf, const building *b)
         buffer_write_u16(buf, b->data.rubble.og_grid_offset);
         buffer_write_u8(buf, b->data.rubble.og_size);
         buffer_write_u8(buf, b->data.rubble.og_orientation);
+    } else if (building_is_fort(b->type)) {
+        buffer_write_u8(buf, b->data.fort.orientation);
     } else {
         buffer_write_u8(buf, b->data.entertainment.num_shows);
         buffer_write_u8(buf, b->data.entertainment.days1);
@@ -194,7 +201,7 @@ void building_state_save_to_buffer(buffer *buf, const building *b)
     buffer_write_u8(buf, b->is_close_to_water);
     buffer_write_u8(buf, b->storage_id);
     buffer_write_i8(buf, b->sentiment.house_happiness); // which union field we use does not matter
-    buffer_write_u8(buf, b->show_on_problem_overlay);
+    buffer_write_u8(buf, b->has_problem);
 
     // expanded building data
     // Monuments
@@ -294,7 +301,11 @@ static void read_type_data(buffer *buf, building *b, int version)
         b->data.house.health = buffer_read_u8(buf);
         b->data.house.num_gods = buffer_read_u8(buf);
         b->data.house.devolve_delay = buffer_read_u8(buf);
-        b->data.house.evolve_text_id = buffer_read_u8(buf);
+        if (version > SAVE_GAME_LAST_NO_HOUSE_MODELS) {
+            b->data.house.evolve_text_id = buffer_read_u16(buf);
+        } else {
+            b->data.house.evolve_text_id = buffer_read_u8(buf);
+        }
         // Do not place this after if (building_has_supplier_inventory(b->type) or after if (building_monument_is_monument(b))
         // Because Caravanserai is monument AND supplier building and resources_needed / inventory is same memory spot
     } else if (b->type == BUILDING_CARAVANSERAI) {
@@ -309,7 +320,7 @@ static void read_type_data(buffer *buf, building *b, int version)
             b->monument.phase = buffer_read_i16(buf);
         }
         b->data.market.fetch_inventory_id = resource_map_legacy_inventory(buffer_read_u8(buf));
-        // As above, Ceres and Venus temples are both monuments and suppliers 
+        // As above, Ceres and Venus temples are both monuments and suppliers
     } else if (b->type == BUILDING_LARGE_TEMPLE_CERES || b->type == BUILDING_LARGE_TEMPLE_VENUS) {
         if (version <= SAVE_GAME_LAST_STATIC_RESOURCES) {
             for (int i = 0; i < RESOURCE_MAX_LEGACY; i++) {
@@ -445,6 +456,8 @@ static void read_type_data(buffer *buf, building *b, int version)
         b->data.rubble.og_grid_offset = buffer_read_u16(buf);
         b->data.rubble.og_size = buffer_read_u8(buf);
         b->data.rubble.og_orientation = buffer_read_u8(buf);
+    } else if (building_is_fort(b->type)) {
+        b->data.fort.orientation = buffer_read_u8(buf);
     } else {
         if (version <= SAVE_GAME_LAST_STATIC_RESOURCES) {
             buffer_skip(buf, 26);
@@ -491,7 +504,7 @@ void building_state_load_from_buffer(buffer *buf, building *b, int building_buf_
         b->subtype.fort_figure_type = buffer_read_i16(buf);// union field, written as fort_figure_type for clarity
         b->type = get_fort_type(b); // get the correct fort type to ensure compatibility
     } else {
-        b->subtype.house_level = buffer_read_i16(buf); // which union field we use does not matter        
+        b->subtype.house_level = buffer_read_i16(buf); // which union field we use does not matter
     }
     b->road_network_id = buffer_read_u8(buf);
     b->monthly_levy = buffer_read_u8(buf);
@@ -542,7 +555,7 @@ void building_state_load_from_buffer(buffer *buf, building *b, int building_buf_
     b->is_close_to_water = buffer_read_u8(buf);
     b->storage_id = buffer_read_u8(buf);
     b->sentiment.house_happiness = buffer_read_i8(buf); // which union field we use does not matter
-    b->show_on_problem_overlay = buffer_read_u8(buf);
+    b->has_problem = buffer_read_u8(buf);
 
     // Wharves produce fish and don't need any progress
     if (b->type == BUILDING_WHARF) {
@@ -579,7 +592,7 @@ void building_state_load_from_buffer(buffer *buf, building *b, int building_buf_
     }
 
     if (save_version < SAVE_GAME_ROADBLOCK_DATA_MOVED_FROM_SUBTYPE) {
-        // Backwards compatibility - roadblock data used to be stored in b->subtype 
+        // Backwards compatibility - roadblock data used to be stored in b->subtype
         if (building_type_is_roadblock(b->type)) {
             b->data.roadblock.exceptions = b->subtype.orientation;
         }
@@ -739,10 +752,66 @@ void building_state_load_from_buffer(buffer *buf, building *b, int building_buf_
         }
     }
 
-    // The following code should only be executed if the savegame includes building information that is not 
+    if (save_version <= SAVE_GAME_LAST_NO_TRIUMPHAL_ARCH_MONUMENT && b->type == BUILDING_TRIUMPHAL_ARCH) {
+        b->monument.phase = MONUMENT_FINISHED;
+    }
+
+    // The following code should only be executed if the savegame includes building information that is not
     // supported on this specific version of Augustus. The extra bytes in the buffer must be skipped in order
     // to prevent reading bogus data for the next building
     if (building_buf_size > BUILDING_STATE_CURRENT_BUFFER_SIZE) {
         buffer_skip(buf, building_buf_size - BUILDING_STATE_CURRENT_BUFFER_SIZE);
+    }
+}
+
+void migrate_altar_rotations(void)
+{
+    for (int i = 1; i < building_count(); i++) {
+        building *b = building_get(i);
+        if (b->state != BUILDING_STATE_IN_USE && b->state != BUILDING_STATE_MOTHBALLED && b->state != BUILDING_STATE_CREATED) {
+            continue;
+        }
+        if (b->type >= BUILDING_SHRINE_CERES && b->type <= BUILDING_SHRINE_VENUS) {
+            b->subtype.orientation = 0;
+            int image_id = map_image_at(b->grid_offset);
+            int ceres_base_image_id = assets_get_image_id("Health_Culture", "Altar_Ceres");
+            int neptune_base_image_id = assets_get_image_id("Health_Culture", "Altar_Neptune");
+            int mercury_base_image_id = assets_get_image_id("Health_Culture", "Altar_Mercury");
+            int mars_base_image_id = assets_get_image_id("Health_Culture", "Altar_Mars");
+            int venus_base_image_id = assets_get_image_id("Health_Culture", "Altar_Venus");
+
+            if (image_id == ceres_base_image_id + 1 ||
+                image_id == neptune_base_image_id + 1 ||
+                image_id == mercury_base_image_id + 1 ||
+                image_id == mars_base_image_id + 1 ||
+                image_id == venus_base_image_id + 1)
+            {
+                b->subtype.orientation = 1;
+            }
+        }
+    }
+}
+
+void migrate_fort_rotations(void)
+{
+    for (int i = 1; i < building_count(); i++) {
+        building *b = building_get(i);
+        if (b->state != BUILDING_STATE_IN_USE && b->state != BUILDING_STATE_MOTHBALLED && b->state != BUILDING_STATE_CREATED) {
+            continue;
+        }
+        if (building_is_fort(b->type)) {
+            const int offsets_x[] = { 3, -1, -4, 0 };
+            const int offsets_y[] = { -1, -4, 0, 3 };
+            for (int i = 0; i < 4; i++) {
+                building *ground = building_get(map_building_at(map_grid_offset(b->x + offsets_x[i], b->y + offsets_y[i])));
+                if (!ground) {
+                    continue;
+                }
+                if (ground->formation_id != b->formation_id) {
+                    continue;
+                }
+                b->data.fort.orientation = i;
+            }
+        }
     }
 }

@@ -1,9 +1,13 @@
 #include "building.h"
 
 #include "building/building.h"
+#include "building/properties.h"
+#include "core/calc.h"
 #include "core/config.h"
+#include "figure/movement.h"
 #include "game/save_version.h"
 #include "map/grid.h"
+#include "map/terrain.h"
 
 static grid_u32 buildings_grid;
 static grid_u8 damage_grid;
@@ -25,10 +29,16 @@ building_type map_building_type_at(int grid_offset)
     return building_id ? building_get(building_id)->type : BUILDING_NONE;
 }
 
-unsigned int map_building_from_buffer(buffer *buildings, int grid_offset)
+unsigned int map_building_from_buffer_16(buffer *buildings, int grid_offset)
 {
     buffer_set(buildings, grid_offset * sizeof(uint16_t));
     return buffer_read_u16(buildings);
+}
+
+unsigned int map_building_from_buffer_32(buffer *buildings, int grid_offset)
+{
+    buffer_set(buildings, grid_offset * sizeof(uint32_t));
+    return buffer_read_u32(buildings);
 }
 
 void map_building_set(int grid_offset, unsigned int building_id)
@@ -53,16 +63,14 @@ unsigned int map_building_rubble_building_id(int grid_offset)
 
 void map_building_set_rubble_grid_building_id(int grid_offset, unsigned int building_id, int size)
 {
-    if (size == 1) {
-        rubble_info_grid.items[grid_offset] = building_id;
-        return;
-    }
     int x = map_grid_offset_to_x(grid_offset);
     int y = map_grid_offset_to_y(grid_offset);
     for (int i = 0; i < size; i++) {
         for (int j = 0; j < size; j++) {
             int offset = map_grid_offset(x + i, y + j);
-            rubble_info_grid.items[offset] = building_id;
+            if (!building_id || !map_terrain_is(offset, TERRAIN_WATER)) {
+                rubble_info_grid.items[offset] = building_id;
+            }
         }
     }
 }
@@ -155,4 +163,46 @@ int map_building_is_reservoir(int x, int y)
         }
     }
     return 1;
+}
+
+int map_building_damage_get(int grid_offset)
+{
+    return damage_grid.items[grid_offset];
+}
+
+void map_building_get_health(const building *b, int grid_offset, int *current, int *max)
+{
+    int max_hp = BUILDING_HP;
+    switch (b->type) {
+        case BUILDING_WALL:
+            max_hp = WALL_HP;
+            break;
+        case BUILDING_TOWER:
+        case BUILDING_GATEHOUSE:
+            max_hp = GATEHOUSE_HP;
+            break;
+        case BUILDING_WATCHTOWER:
+        case BUILDING_PALISADE:
+        case BUILDING_PALISADE_GATE:
+            max_hp = PALISADE_HP;
+            break;
+        default:
+            break;
+    }
+    int current_hp = max_hp;
+    if (building_properties_for_type(b->type)->shared) {
+        int damage = map_building_damage_get(grid_offset);
+        current_hp = calc_bound(max_hp - damage, 0, max_hp);
+    } else {
+        grid_slice *slice = map_grid_get_grid_slice_square(b->grid_offset, b->size);
+        for (int i = 0; i < slice->size; i++) {
+            int tile_damage = map_building_damage_get(slice->grid_offsets[i]);
+            int tile_hp = calc_bound(max_hp - tile_damage, 0, max_hp);
+            if (tile_hp < current_hp) {
+                current_hp = tile_hp;
+            }
+        }
+    }
+    *current = current_hp;
+    *max = max_hp;
 }

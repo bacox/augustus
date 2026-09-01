@@ -189,11 +189,11 @@ static void draw_foreground(void)
 {
     graphics_in_dialog();
     
-    for (int i = 0; i < NUM_GENERIC_BUTTONS; i++) {
+    for (unsigned int i = 0; i < NUM_GENERIC_BUTTONS; i++) {
         font_t font = !(EMPIRE_IS_DEFAULT_IMAGE) && i >= 4 && i <= 7 ? FONT_NORMAL_RED : FONT_NORMAL_BLACK;
         button_border_draw(generic_buttons[i].x, generic_buttons[i].y, generic_buttons[i].width,
             generic_buttons[i].height, data.focus_button_id == i + 1 && (i >= 4 && i <= 7 ? EMPIRE_IS_DEFAULT_IMAGE : 1));
-        lang_text_draw_centered(CUSTOM_TRANSLATION, TR_EDITOR_EMPIRE_PROPERTIES_SELECT_IAMGE + i, generic_buttons[i].x,
+        lang_text_draw_centered(CUSTOM_TRANSLATION, TR_EDITOR_EMPIRE_PROPERTIES_SELECT_IMAGE + i, generic_buttons[i].x,
             generic_buttons[i].y + 8, generic_buttons[i].width, font);
     }
     if (EMPIRE_IS_DEFAULT_IMAGE) {

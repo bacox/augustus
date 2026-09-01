@@ -18,7 +18,6 @@
 #include "window/empire.h"
 #include "window/popup_dialog.h"
 
-#define BASE_BORDER_FLAG_IMAGE_ID 3323
 #define BORDER_EDGE_DEFAULT_SPACING 50
 
 static struct {
@@ -79,8 +78,8 @@ void empire_editor_set_tool(empire_tool tool)
 
 void empire_editor_change_tool(int amount)
 {
-    if ((int)data.current_tool + amount < EMPIRE_TOOL_MIN) {
-        data.current_tool = EMPIRE_TOOL_MAX - ((int)data.current_tool - amount) + 1;
+    if ((int) data.current_tool + amount < EMPIRE_TOOL_MIN) {
+        data.current_tool = EMPIRE_TOOL_MAX - ((int) data.current_tool - amount) + 1;
     } else {
         data.current_tool += amount;
     }
@@ -155,7 +154,7 @@ static void shift_edge_indices(const empire_object *const_obj)
     if (const_obj->order_index < data.foreach_param1) {
         return;
     }
-    if (const_obj->parent_object_id != empire_object_get_border()->id) {
+    if ((unsigned int) const_obj->parent_object_id != empire_object_get_border()->id) {
         return;
     }
     empire_object *obj = empire_object_get(const_obj->id);
@@ -223,12 +222,12 @@ static int place_object(int mouse_x, int mouse_y)
         return 1;
     }
     full_empire_object *full = empire_object_get_new();
-    
+
     if (!full) {
         log_error("Error creating new object - out of memory", 0, 0);
         return 0;
     }
-    
+
     switch (data.current_tool) {
         case EMPIRE_TOOL_OUR_CITY:
         case EMPIRE_TOOL_TRADE_CITY:
@@ -271,21 +270,21 @@ static int place_object(int mouse_x, int mouse_y)
             empire_object_remove(full->obj.id);
             return 0;
     }
-    
+
     int is_edge = full->obj.type == EMPIRE_OBJECT_BORDER_EDGE;
     int is_trade_waypoint = full->obj.type == EMPIRE_OBJECT_TRADE_WAYPOINT;
     int x = editor_empire_mouse_to_empire_x(mouse_x) - ((full->obj.width / 2) * !is_edge);
     int y = editor_empire_mouse_to_empire_y(mouse_y) - ((full->obj.height / 2) * !is_edge);
     empire_transform_coordinates(&x, &y);
     // find nearest before assigning coordinates so it doesn't always find itself
-    if (is_edge && config_get(CONFIG_UI_EMPIRE_SMART_BORDER_PLACMENT)) {
+    if (is_edge && config_get(CONFIG_UI_EMPIRE_SMART_BORDER_PLACEMENT)) {
         int nearest_id = empire_object_get_nearest_of_type(x, y, EMPIRE_OBJECT_BORDER_EDGE);
         data.foreach_param1 = empire_object_get(nearest_id)->order_index;
         data.foreach_param2 = 1;
         empire_object_foreach_of_type(shift_edge_indices, EMPIRE_OBJECT_BORDER_EDGE);
         full->obj.order_index = data.foreach_param1;
     }
-    
+
     if (is_trade_waypoint) {
         data.nearest_trade_waypoint = empire_object_get_nearest_of_type_with_condition(x, y,
             EMPIRE_OBJECT_TRADE_WAYPOINT, condition_is_trade_type);
@@ -309,19 +308,20 @@ static int place_object(int mouse_x, int mouse_y)
         full->obj.order_index = data.foreach_param1;
         full->obj.trade_route_id = empire_object_get(full->obj.parent_object_id)->trade_route_id;
     }
-    
+
     full->obj.x = x;
     full->obj.y = y;
-    
+
     if (full->city_type == EMPIRE_CITY_TRADE || full->city_type == EMPIRE_CITY_FUTURE_TRADE || is_trade_waypoint) {
         window_empire_collect_trade_edges();
         empire_object_set_trade_route_coords(empire_object_get_our_city());
     }
-    
+
     return 1;
 }
 
-static int create_trade_route_default(full_empire_object *full) {
+static int create_trade_route_default(full_empire_object *full)
+{
     full_empire_object *route_obj = empire_object_get_new();
     if (!route_obj) {
         log_error("Error creating new object - out of memory", 0, 0);
@@ -331,7 +331,7 @@ static int create_trade_route_default(full_empire_object *full) {
     route_obj->obj.type = EMPIRE_OBJECT_LAND_TRADE_ROUTE;
     route_obj->obj.image_id = image_group(GROUP_EMPIRE_TRADE_ROUTE_TYPE) + 1;
     full->trade_route_cost = 500;
-    
+
     return 1;
 }
 
@@ -339,7 +339,7 @@ static int place_city(full_empire_object *city_obj)
 {
     city_obj->in_use = 1;
     city_obj->obj.type = EMPIRE_OBJECT_CITY;
-    
+
     switch (data.current_tool) {
         case EMPIRE_TOOL_OUR_CITY:
             if (empire_object_get_our_city()) {
@@ -391,23 +391,23 @@ static int place_city(full_empire_object *city_obj)
             city_obj->empire_city_icon = EMPIRE_CITY_ICON_DISTANT_CITY;
             break;
         default:
-            return 0; 
+            return 0;
     }
-    
+
     city_obj->obj.image_id = empire_city_get_icon_image_id(city_obj->empire_city_icon);
     const image *img = image_get(city_obj->obj.image_id);
     city_obj->obj.width = img->width;
     city_obj->obj.height = img->height;
 
     empire_object_add_to_cities(city_obj);
-    
+
     return 1;
 }
 
 static int place_border(full_empire_object *edge)
 {
     edge->in_use = 1;
-    unsigned int parent_id = 0; 
+    unsigned int parent_id = 0;
     const empire_object *current_border = empire_object_get_border();
     if (!current_border) {
         // create border
@@ -419,7 +419,7 @@ static int place_border(full_empire_object *edge)
         border->in_use = 1;
         border->obj.type = EMPIRE_OBJECT_BORDER;
         border->obj.width = BORDER_EDGE_DEFAULT_SPACING;
-        
+
         parent_id = border->obj.id;
     } else {
         parent_id = current_border->id;
@@ -429,14 +429,14 @@ static int place_border(full_empire_object *edge)
     edge->obj.parent_object_id = parent_id;
     edge->obj.order_index = empire_object_get_highest_index(parent_id) + 1;
     edge->obj.image_id = BASE_BORDER_FLAG_IMAGE_ID;
-    
+
     return 1;
 }
 
 static int place_battle(full_empire_object *battle_obj)
 {
     set_battles_shown(1); // toggle the show invasions as you wont see your placed object otherwise
-    
+
     battle_obj->in_use = 1;
     battle_obj->obj.type = EMPIRE_OBJECT_BATTLE_ICON;
     battle_obj->obj.invasion_path_id = data.current_invasion_path;
@@ -446,16 +446,16 @@ static int place_battle(full_empire_object *battle_obj)
     const image *img = image_get(battle_obj->obj.image_id);
     battle_obj->obj.width = img->width;
     battle_obj->obj.height = img->height;
-    
+
     return 1;
 }
 
 static int place_distant_battle(full_empire_object *distant_battle)
 {
     set_battles_shown(1); // toggle the show invasions as you wont see your placed object otherwise
-    
+
     distant_battle->in_use = 1;
-    
+
     if (data.current_tool == EMPIRE_TOOL_DISTANT_BABARIAN) {
         distant_battle->obj.type = EMPIRE_OBJECT_ENEMY_ARMY;
         distant_battle->obj.image_id = image_group(GROUP_EMPIRE_ENEMY_ARMY);
@@ -467,11 +467,11 @@ static int place_distant_battle(full_empire_object *distant_battle)
     } else {
         return 0;
     }
-    
+
     const image *img = image_get(distant_battle->obj.image_id);
     distant_battle->obj.width = img->width;
     distant_battle->obj.height = img->height;
-    
+
     return 1;
 }
 
@@ -479,7 +479,7 @@ static int place_trade_waypoint(full_empire_object *waypoint)
 {
     waypoint->in_use = 1;
     waypoint->obj.type = EMPIRE_OBJECT_TRADE_WAYPOINT;
-    
+
     return 1;
 }
 
@@ -511,7 +511,7 @@ static void deletion_confirmed(int confirmed, int checked)
 }
 
 static int delete_object_at(int mouse_x, int mouse_y)
-{    
+{
     int empire_x = editor_empire_mouse_to_empire_x(mouse_x);
     int empire_y = editor_empire_mouse_to_empire_y(mouse_y);
     data.deletion_id = empire_object_get_at(empire_x, empire_y);
@@ -554,26 +554,27 @@ int empire_editor_delete_object(unsigned int obj_id)
         empire_city_remove(empire_city_get_for_object(obj_id));
     }
     empire_object_remove(obj_id);
-    
+
     if (full->obj.type == EMPIRE_OBJECT_TRADE_WAYPOINT) {
+        // empire_object_get is fine here to use on the deleted object because no other was created since deletion
         data.foreach_param1 = empire_object_get(obj_id)->order_index;
         data.foreach_param2 = full->obj.parent_object_id;
         empire_object_foreach_of_type(shift_trade_waypoints, EMPIRE_OBJECT_TRADE_WAYPOINT);
         window_empire_collect_trade_edges();
         empire_object_set_trade_route_coords(empire_object_get_our_city());
     }
-    
+
     if (full->obj.type == EMPIRE_OBJECT_BORDER_EDGE) {
         data.foreach_param1 = empire_object_get(obj_id)->order_index;
         data.foreach_param2 = -1;
         empire_object_foreach_of_type(shift_edge_indices, EMPIRE_OBJECT_BORDER_EDGE);
     }
-    
+
     return 1;
 }
 
 static int pick_empire_tool(int mouse_x, int mouse_y)
-{    
+{
     int empire_x = editor_empire_mouse_to_empire_x(mouse_x);
     int empire_y = editor_empire_mouse_to_empire_y(mouse_y);
     int picked_id = empire_object_get_at(empire_x, empire_y);
@@ -583,7 +584,7 @@ static int pick_empire_tool(int mouse_x, int mouse_y)
     full_empire_object *full = empire_object_get_full(picked_id);
     empire_tool object_tool = empire_editor_get_tool_for_object(full);
     if (!object_tool && full->city_type != EMPIRE_CITY_OURS) {
-        return 0;   
+        return 0;
     }
     data.current_tool = object_tool;
     window_request_refresh();

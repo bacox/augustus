@@ -19,8 +19,24 @@
 #include <stdio.h>
 #include <math.h>
 
-#define DRIFT_DIRECTION_RIGHT 1
-#define DRIFT_DIRECTION_LEFT -1
+static const int PARTICLE_SIZES_RAIN[] = { 1, 8, 15, 23, 30 }; //sets of arbitrary values for a noticeable difference
+static const int PARTICLE_SIZES_SAND[] = { 1, 6, 10, 15, 20 }; //denoted as: minmum, small, regular, large, maximum
+static const int PARTICLE_SIZES_SNOW[] = { 2, 3, 4, 6, 8 };
+static const int PARTICLE_SPEEDS_RAIN[] = { 1, 4, 8, 13, 20 }; //sets of arbitrary values for a noticeable difference
+static const int PARTICLE_SPEEDS_SNOW[] = { 1, 1, 2, 3, 5 };  //denoted as: minimum, slow, regular, fast, maximum
+static const int PARTICLE_SPEEDS_SAND[] = { 1, 3, 5, 8, 12 };
+static const int WEATHER_MAX_DURATION[] = { 1, 3, 6 }; // expressed in months, doesn't apply to thunderstorms
+
+// Intensity at/above which rain is treated as "heavy": drops gain per-particle
+// wind perturbation and a speed boost. Below this it's "light" rain.
+#define HEAVY_RAIN_THRESHOLD 600
+
+static int get_particle_size(const int *table, int idx)
+{
+    if (idx < 0) idx = 0;
+    if (idx > 4) idx = 4;
+    return table[idx];
+}
 
 typedef struct {
     int x;
@@ -29,11 +45,11 @@ typedef struct {
     // For rain
     int length;
     int speed;
-    int wind_variation;
+    int wind_phase;
 
     // For snow
     int drift_offset;
-    int drift_direction;
+    int prev_drift;
 
     // For sand
     int offset;
@@ -48,11 +64,13 @@ static struct {
     int overlay_alpha;
     int overlay_target;
     int overlay_color;
-    int displayed_intensity;
+    int current_particle_count;
     int last_elements_count;
     int last_intensity;
     int last_active;
     int is_sound_playing;
+    int is_wind_playing;
+    int weather_duration_left;
     weather_type displayed_type;
     weather_type last_type;
 
@@ -83,6 +101,29 @@ static struct {
     }
 };
 
+// Scale the simulation's chosen intensity (particle count) by the user's
+// type-specific intensity slider so the slider controls how many particles
+// are shown, not just the overlay alpha.
+static int get_adjusted_intensity(void)
+{
+    int base = data.weather_config.intensity;
+    int slider = 100;
+    switch (data.weather_config.type) {
+        case WEATHER_RAIN:
+            slider = config_get(CONFIG_WT_RAIN_INTENSITY);
+            break;
+        case WEATHER_SNOW:
+            slider = config_get(CONFIG_WT_SNOW_INTENSITY);
+            break;
+        case WEATHER_SAND:
+            slider = config_get(CONFIG_WT_SANDSTORM_INTENSITY);
+            break;
+        default:
+            break;
+    }
+    return base * slider / 100;
+}
+
 void init_weather_element(weather_element *e, int type)
 {
     e->x = random_from_stdlib() % screen_width();
@@ -90,21 +131,29 @@ void init_weather_element(weather_element *e, int type)
 
     switch (type) {
         case WEATHER_RAIN:
-            e->length = config_get(CONFIG_WT_RAIN_LENGTH) + random_from_stdlib() % 10;
-            e->speed = config_get(CONFIG_WT_RAIN_SPEED) + random_from_stdlib() % 5;
-            if (data.weather_config.intensity < 600) {
-                e->wind_variation = 0;
+            e->length = get_particle_size(PARTICLE_SIZES_RAIN, config_get(CONFIG_WT_RAIN_LENGTH)) + random_from_stdlib() % 10;
+            e->speed = get_particle_size(PARTICLE_SPEEDS_RAIN, config_get(CONFIG_WT_RAIN_SPEED)) + random_from_stdlib() % 5;
+            // Light rain: every drop shares the global wind cycle (uniform sweep).
+            // Heavy rain: each drop sees the cycle at a different phase, so they
+            // don't all change direction in lockstep.
+            if (get_adjusted_intensity() < HEAVY_RAIN_THRESHOLD) {
+                e->wind_phase = 0;
             } else {
-                e->wind_variation = (random_from_stdlib() % 3) - 1; // -1, 0 or 1
+                e->wind_phase = random_from_stdlib() % (HEAVY_RAIN_THRESHOLD / 2);
             }
             break;
         case WEATHER_SNOW:
-            e->drift_offset = random_from_stdlib() % 100;
-            e->speed = config_get(CONFIG_WT_SNOW_SPEED) + random_from_stdlib() % 2;
-            e->drift_direction = (random_from_stdlib() % 2 == 0) ? DRIFT_DIRECTION_RIGHT : DRIFT_DIRECTION_LEFT;
+            // drift_offset is a per-flake phase so each flake samples the
+            // sway cycle slightly out of step. prev_drift seeds the delta
+            // tracker with the sway curve's current value so the flake doesn't
+            // jump on its first rendered frame.
+            e->drift_offset = random_from_stdlib() % 300;
+            e->prev_drift = (int) (sinf(data.wind_angle * 0.021f
+                            + e->drift_offset * 0.02f) * 10.0f);
+            e->speed = get_particle_size(PARTICLE_SPEEDS_SNOW, config_get(CONFIG_WT_SNOW_SPEED)) + random_from_stdlib() % 2;
             break;
         case WEATHER_SAND:
-            e->speed = config_get(CONFIG_WT_SANDSTORM_SPEED) + (random_from_stdlib() % 2);
+            e->speed = get_particle_size(PARTICLE_SPEEDS_SAND, config_get(CONFIG_WT_SANDSTORM_SPEED)) + (random_from_stdlib() % 2);
             e->offset = random_between_from_stdlib(0, 1000);
             break;
     }
@@ -120,7 +169,7 @@ static void weather_stop(void)
     data.weather_config.active = 0;
     data.weather_initialized = 0;
     data.last_elements_count = 0;
-    data.displayed_intensity = 0;
+    data.current_particle_count = 0;
     data.last_active = 0;
     data.last_type = WEATHER_NONE;
     data.last_intensity = 0;
@@ -165,25 +214,33 @@ static void update_lightning(void)
 static void update_wind(void)
 {
     data.wind_angle += data.wind_speed;
-    data.weather_config.dx = ((data.wind_angle / 10) % 5) - 2;
+    if (data.wind_angle > 1000000) {
+        data.wind_angle %= 1000;
+    }
+    // Sum of two slow sines at non-commensurate frequencies: smooth drift with
+    // no discontinuous wrap (replaces the sawtooth that snapped all drops
+    // through -2..+2 together every 50 frames).
+    float w = sinf(data.wind_angle * 0.011f) * 1.5f
+            + sinf(data.wind_angle * 0.025f) * 0.8f;
+    data.weather_config.dx = (int) w;
 }
 
-static void update_displayed_intensity(void)
+static void update_current_particle_count(void)
 {
-    int target = data.weather_config.active ? data.weather_config.intensity : 0;
+    int target = data.weather_config.active ? get_adjusted_intensity() : 0;
     int duration = 48;
-    int diff = abs(target - data.displayed_intensity);
+    int diff = abs(target - data.current_particle_count);
 
     int speed = (diff > 0) ? (diff + duration - 1) / duration : 1;
 
-    if (data.displayed_intensity < target) {
-        data.displayed_intensity += speed;
-        if (data.displayed_intensity > target)
-            data.displayed_intensity = target;
-    } else if (data.displayed_intensity > target) {
-        data.displayed_intensity -= speed;
-        if (data.displayed_intensity < target)
-            data.displayed_intensity = target;
+    if (data.current_particle_count < target) {
+        data.current_particle_count += speed;
+        if (data.current_particle_count > target)
+            data.current_particle_count = target;
+    } else if (data.current_particle_count > target) {
+        data.current_particle_count -= speed;
+        if (data.current_particle_count < target)
+            data.current_particle_count = target;
     }
 }
 
@@ -206,8 +263,12 @@ static void update_overlay_alpha(void)
 
 static void render_weather_overlay(void)
 {
-    if (data.displayed_type == WEATHER_RAIN && data.last_intensity < 800) {
-        return; // no overlay for light rain
+    // No dark overlay for light rain — the black tint only makes visual sense
+    // for actual storms. Threshold uses the simulation's base intensity, not
+    // the slider-scaled value, because "is this a storm" is a simulation
+    // property the slider shouldn't override.
+    if (data.displayed_type == WEATHER_RAIN && data.weather_config.intensity < 800) {
+        return;
     }
 
     update_overlay_alpha();
@@ -216,13 +277,16 @@ static void render_weather_overlay(void)
         return;
     }
 
+    // Slider 100 maps to the historically-tuned visual cap (so a black rain
+    // overlay never goes fully opaque). The cap differs per weather type
+    // because the overlay colors are different (black vs near-white vs sandy).
     int alpha_factor = 40;
     if (data.displayed_type == WEATHER_SNOW) {
-        alpha_factor = config_get(CONFIG_WT_SNOW_INTENSITY);
-    } else if (data.displayed_type == WEATHER_RAIN && data.last_intensity < 900) {
-        alpha_factor = config_get(CONFIG_WT_RAIN_INTENSITY);
+        alpha_factor = config_get(CONFIG_WT_SNOW_INTENSITY) * 30 / 100;
+    } else if (data.displayed_type == WEATHER_RAIN) {
+        alpha_factor = config_get(CONFIG_WT_RAIN_INTENSITY) * 60 / 100;
     } else if (data.displayed_type == WEATHER_SAND) {
-        alpha_factor = config_get(CONFIG_WT_SANDSTORM_INTENSITY);
+        alpha_factor = config_get(CONFIG_WT_SANDSTORM_INTENSITY) * 10 / 100;
     }
 
     uint8_t alpha = (uint8_t) (((alpha_factor * data.overlay_alpha) / 100) * 255 / 100);
@@ -242,66 +306,83 @@ static void render_weather_overlay(void)
 
 static void draw_snow(void)
 {
-    if (!data.elements || data.displayed_intensity == 0) {
+    if (!data.elements || data.current_particle_count == 0) {
         return;
     }
 
+    if (window_city_is_window_cityview() || window_city_simulated_weather(WEATHER_SNOW)) {
+        update_wind();
+    }
+
     int max_particles = data.last_elements_count;
-    int count = data.displayed_intensity;
+    int count = data.current_particle_count;
     if (count > max_particles) {
         count = max_particles;
     }
+
     for (int i = 0; i < count; ++i) {
-        if (window_city_is_window_cityview()) {
-            int drift = ((data.elements[i].y + data.elements[i].drift_offset) % 10) - 5;
-            data.elements[i].x += (drift / 10) * data.elements[i].drift_direction;
+        if (window_city_is_window_cityview() || window_city_simulated_weather(WEATHER_SNOW)) {
+            // Slow, bounded horizontal sway around the flake's spawn column.
+            // target_drift oscillates in ±10px over ~5 seconds, with a per-flake
+            // phase offset so flakes don't sway in unison. We apply the delta
+            // (new - prev) so x naturally returns to center instead of running
+            // off-screen via accumulating per-frame perturbations.
+            float target_drift = sinf(data.wind_angle * 0.021f
+                                + data.elements[i].drift_offset * 0.02f) * 10.0f;
+            int new_drift = (int) target_drift;
+            data.elements[i].x += new_drift - data.elements[i].prev_drift;
+            data.elements[i].prev_drift = new_drift;
             data.elements[i].y += data.elements[i].speed;
         }
 
+        int sf_size = get_particle_size(PARTICLE_SIZES_SNOW, config_get(CONFIG_UI_WT_SNOWFLAKE_SIZE));
+        int sf_half = sf_size / 2;
+        // horizontal arm of cross
         graphics_draw_line(
             data.elements[i].x,
-            data.elements[i].x + 1,
-            data.elements[i].y,
-            data.elements[i].y,
+            data.elements[i].x + sf_size,
+            data.elements[i].y + sf_half,
+            data.elements[i].y + sf_half,
             COLOR_WEATHER_SNOWFLAKE);
-
+        // vertical arm of cross
         graphics_draw_line(
-            data.elements[i].x,
-            data.elements[i].x,
+            data.elements[i].x + sf_half,
+            data.elements[i].x + sf_half,
             data.elements[i].y,
-            data.elements[i].y + 1,
+            data.elements[i].y + sf_size,
             COLOR_WEATHER_SNOWFLAKE);
 
         if (data.elements[i].y >= screen_height() || data.elements[i].x <= 0 || data.elements[i].x >= screen_width()) {
             init_weather_element(&data.elements[i], data.weather_config.type);
-            data.elements[i].y = 0;
+            data.elements[i].y = -(int) (random_from_stdlib() % 30);
         }
     }
 }
 
 static void draw_sandstorm(void)
 {
-    if (!data.elements || data.displayed_intensity == 0) {
+    if (!data.elements || data.current_particle_count == 0) {
         return;
     }
 
     int max_particles = data.last_elements_count;
-    int count = data.displayed_intensity;
+    int count = data.current_particle_count;
     if (count > max_particles) {
         count = max_particles;
     }
 
     for (int i = 0; i < count; ++i) {
-        if (window_city_is_window_cityview()) {
+        if (window_city_is_window_cityview() || window_city_simulated_weather(WEATHER_SAND)) {
             int wave = ((data.elements[i].y + data.elements[i].offset) % 10) - 5;
             data.elements[i].x += data.elements[i].speed + (wave / 10);
         }
 
+        int sd_size = get_particle_size(PARTICLE_SIZES_SAND, config_get(CONFIG_UI_WT_SANDSTORM_SIZE));
         graphics_draw_line(
             data.elements[i].x,
-            data.elements[i].x + 1,
+            data.elements[i].x + sd_size,
             data.elements[i].y,
-            data.elements[i].y + 1,
+            data.elements[i].y + sd_size,
             COLOR_WEATHER_SAND_PARTICLE);
 
         if (data.elements[i].x > screen_width()) {
@@ -313,30 +394,37 @@ static void draw_sandstorm(void)
 
 static void draw_rain(void)
 {
-    if (!data.elements || data.displayed_intensity == 0) {
+    if (!data.elements || data.current_particle_count == 0) {
         return;
     }
 
-    if (data.weather_config.intensity < 600 && window_city_is_window_cityview()) {
+    if (window_city_is_window_cityview() || window_city_simulated_weather(WEATHER_RAIN)) {
         update_wind();
     }
 
     int wind_strength = abs(data.weather_config.dx);
-    int base_speed = 3 + wind_strength + (data.weather_config.intensity / 300);
+    int adjusted_intensity = get_adjusted_intensity();
+    int base_speed = 3 + wind_strength + (adjusted_intensity / (HEAVY_RAIN_THRESHOLD / 2));
 
     int max_particles = data.last_elements_count;
-    int count = data.displayed_intensity;
+    int count = data.current_particle_count;
     if (count > max_particles) {
         count = max_particles;
     }
 
+    // Global wind shared by every drop: dominant horizontal direction.
+    float global_w = sinf(data.wind_angle * 0.011f) * 1.5f
+                   + sinf(data.wind_angle * 0.025f) * 0.8f;
+
     for (int i = 0; i < count; ++i) {
-        int dx;
-        if (data.displayed_intensity < 600) {
-            dx = data.weather_config.dx;
-        } else {
-            dx = data.weather_config.dx + data.elements[i].wind_variation;
+        // Light rain: drops follow the global wind exactly (uniform sweep).
+        // Heavy rain: small per-particle perturbation (±0.5) staggers the
+        // moment each drop switches direction at rounding boundaries.
+        float pp = 0.0f;
+        if (adjusted_intensity >= HEAVY_RAIN_THRESHOLD) {
+            pp = sinf((data.wind_angle + data.elements[i].wind_phase) * 0.04f) * 0.5f;
         }
+        int dx = (int) (global_w + pp);
 
         graphics_draw_line(
             data.elements[i].x,
@@ -345,10 +433,11 @@ static void draw_rain(void)
             data.elements[i].y + data.elements[i].length,
             COLOR_WEATHER_DROPS);
 
-        if (window_city_is_window_cityview()) {
+        if (window_city_is_window_cityview() || window_city_simulated_weather(WEATHER_RAIN)) {
             data.elements[i].x += dx;
 
-            int dy = base_speed + data.elements[i].speed + (((data.elements[i].x + data.elements[i].y) % 10) / 10);
+            int dy = base_speed + data.elements[i].speed
+                   + (((data.elements[i].x + data.elements[i].y) % 3) - 1);
             data.elements[i].y += dy;
         }
 
@@ -358,27 +447,71 @@ static void draw_rain(void)
         }
     }
 
-    if (data.displayed_intensity > 900) {
+    if (data.current_particle_count > 900) {
         update_lightning();
     }
 }
 
+static void start_wind_sound(void)
+{
+    if (data.is_wind_playing) {
+        return;
+    }
+    sound_device_play_file_on_channel_panned(ASSETS_DIRECTORY "/Sounds/Wind.ogg",
+        SOUND_TYPE_EFFECTS, setting_sound(SOUND_TYPE_EFFECTS)->volume, 100, 100, 1);
+    data.is_wind_playing = 1;
+}
+
+static void stop_wind_sound(void)
+{
+    if (!data.is_wind_playing) {
+        return;
+    }
+    sound_device_stop_type(SOUND_TYPE_EFFECTS);
+    data.is_wind_playing = 0;
+}
+
 void update_weather(void)
 {
-
     render_weather_overlay();
-    update_displayed_intensity();
+    update_current_particle_count();
+    if (window_is(WINDOW_CONFIG)) { //preview weather in config menu
+        if (config_get(CONFIG_UI_WT_PREVIEW_RAIN)) {
+            data.weather_config.type = WEATHER_RAIN;
+            data.weather_config.active = 1;
+            // Use default intensity for preview
+            set_weather(1, 600, WEATHER_RAIN);
+        } else if (config_get(CONFIG_UI_WT_PREVIEW_HEAVY_RAIN)) {
+            data.weather_config.type = WEATHER_RAIN;
+            data.weather_config.active = 1;
+            // Use high intensity for heavy rain preview to show lightning
+            set_weather(1, 999, WEATHER_RAIN);
+        } else if (config_get(CONFIG_UI_WT_PREVIEW_SNOW)) {
+            data.weather_config.type = WEATHER_SNOW;
+            data.weather_config.active = 1;
+            set_weather(1, 3000, WEATHER_SNOW);
+        } else if (config_get(CONFIG_UI_WT_PREVIEW_SANDSTORM)) {
+            data.weather_config.type = WEATHER_SAND;
+            data.weather_config.active = 1;
+            set_weather(1, 3000, WEATHER_SAND);
+        } else {
+            data.weather_config.type = WEATHER_NONE;
+            data.weather_config.active = 0;
+            weather_stop();
+        }
+    }
 
     if (!config_get(CONFIG_UI_DRAW_WEATHER)) {
-        if (data.is_sound_playing) {
+        if (data.is_sound_playing || data.is_wind_playing) {
             sound_device_stop_type(SOUND_TYPE_EFFECTS);
             data.is_sound_playing = 0;
+            data.is_wind_playing = 0;
         }
         weather_stop();
         return;
     }
 
-    int target_count = data.weather_config.intensity;
+    int target_count = get_adjusted_intensity();
     if (target_count != data.last_elements_count && target_count > 0) {
         if (data.elements) {
             free(data.elements);
@@ -389,7 +522,8 @@ void update_weather(void)
             init_weather_element(&data.elements[i], data.weather_config.type);
         }
         data.last_elements_count = target_count;
-    } else if (target_count == 0 && data.displayed_intensity == 0) {
+        data.weather_initialized = 1;
+    } else if (target_count == 0 && data.current_particle_count == 0) {
         if (data.elements) {
             free(data.elements);
             data.elements = 0;
@@ -397,22 +531,18 @@ void update_weather(void)
         data.last_elements_count = 0;
     }
 
-    if ((data.weather_config.type == WEATHER_NONE || data.weather_config.active == 0) && data.displayed_intensity == 0) {
+    if ((data.weather_config.type == WEATHER_NONE ||
+        data.weather_config.active == 0) && data.current_particle_count == 0
+        && !window_is(WINDOW_CONFIG) && !window_is(WINDOW_MAIN_MENU)) {
         if (data.is_sound_playing) {
             sound_device_stop_type(SOUND_TYPE_EFFECTS);
             data.is_sound_playing = 0;
         }
+        start_wind_sound();
         weather_stop();
         return;
-    }
-
-    // init
-    if (!data.weather_initialized && data.weather_config.active == 1) {
-        data.elements = malloc(sizeof(weather_element) * data.weather_config.intensity);
-        for (int i = 0; i < data.weather_config.intensity; ++i) {
-            init_weather_element(&data.elements[i], data.weather_config.type);
-        }
-        data.weather_initialized = 1;
+    } else {
+        stop_wind_sound();
     }
 
     // SNOW
@@ -452,21 +582,21 @@ void weather_reset(void)
 {
     weather_stop();
     sound_device_stop_type(SOUND_TYPE_EFFECTS);
+    data.is_sound_playing = 0;
+    data.is_wind_playing = 0;
 }
 
 void city_weather_update(int month)
 {
-    static int weather_months_left = 0;
-
     int active;
     int intensity;
     weather_type type;
 
-    if (weather_months_left > 0) {
+    if (data.weather_duration_left > 0) {
         active = data.last_active;
         intensity = data.last_intensity;
         type = data.last_type;
-        weather_months_left--;
+        data.weather_duration_left--;
     } else {
         active = chance_percent(15);
         type = WEATHER_RAIN;
@@ -495,9 +625,11 @@ void city_weather_update(int month)
             intensity = 0;
             type = WEATHER_NONE;
         } else {
-            weather_months_left = 1;
+            int duration_setting = config_get(CONFIG_UI_WT_WEATHER_DURATION);
+            data.weather_duration_left = random_between_from_stdlib(1, WEATHER_MAX_DURATION[duration_setting]);
             // Play sounds only if weather is enabled
             if (config_get(CONFIG_UI_DRAW_WEATHER)) {
+                stop_wind_sound();
                 if (WEATHER_RAIN == type) {
                     if (intensity > 800) {
                         sound_device_play_file_on_channel_panned(ASSETS_DIRECTORY "/Sounds/HeavyRain.ogg",

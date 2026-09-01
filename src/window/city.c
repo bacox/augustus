@@ -30,6 +30,7 @@
 #include "graphics/panel.h"
 #include "graphics/screen.h"
 #include "graphics/text.h"
+#include "graphics/weather.h"
 #include "graphics/window.h"
 #include "map/bookmark.h"
 #include "map/building.h"
@@ -39,8 +40,7 @@
 #include "scenario/allowed_building.h"
 #include "scenario/criteria.h"
 #include "scenario/custom_variable.h"
-#include "widget/city.h"
-#include "widget/city_with_overlay.h"
+#include "widget/city/city.h"
 #include "widget/top_menu.h"
 #include "widget/sidebar/city.h"
 #include "widget/sidebar/extra.h"
@@ -61,6 +61,20 @@ static int time_left_label_shown;
 
 
 static void draw_topleft_label_with_fragments(int x, int y, const lang_fragment *fragments, int fragment_count, font_t font, color_t color_ver);
+
+int window_city_simulated_weather(weather_type weather)
+{
+    switch (weather) {
+        case WEATHER_RAIN:
+            return config_get(CONFIG_UI_WT_PREVIEW_RAIN) || config_get(CONFIG_UI_WT_PREVIEW_HEAVY_RAIN);
+        case WEATHER_SNOW:
+            return config_get(CONFIG_UI_WT_ENABLE_SNOW_CENTRAL);
+        case WEATHER_SAND:
+            return config_get(CONFIG_UI_WT_PREVIEW_SANDSTORM);
+        default:
+            return 0;
+    }
+}
 
 int window_city_is_window_cityview(void)
 {
@@ -248,7 +262,9 @@ void label_draw_masked(int x, int y, int width_blocks, int type, color_t color)
 static void draw_topleft_label_with_fragments(int x, int y, const lang_fragment *fragments, int fragment_count, font_t font, color_t color)
 {
     // Measure total width using the new sequence width function
-    int label_width = lang_text_get_sequence_width(fragments, fragment_count, font);
+    lang_sequence sequence;
+    lang_seq_init(&sequence, (lang_fragment *) fragments, fragment_count);
+    int label_width = lang_seq_get_width(&sequence, font);
 
     int label_blocks = (label_width + 2 * BLOCK_SIZE) / BLOCK_SIZE;
     if (label_blocks < 1) label_blocks = 1;
@@ -256,7 +272,7 @@ static void draw_topleft_label_with_fragments(int x, int y, const lang_fragment 
     label_draw_masked(x, y, label_blocks, 1, color);
 
     // Draw the sequence using the new lang_fragment system
-    lang_text_draw_sequence(fragments, fragment_count, x + 6, y + 4, font, COLOR_MASK_NONE);
+    lang_seq_draw(&sequence, x + 6, y + 4, font, COLOR_MASK_NONE);
 }
 
 
@@ -376,6 +392,9 @@ static void show_roamers_for_overlay(int overlay)
             figure_roamer_preview_create_all_for_building_type(BUILDING_DOCTOR);
             figure_roamer_preview_create_all_for_building_type(BUILDING_HOSPITAL);
             break;
+        case OVERLAY_ENEMY:
+            figure_roamer_preview_create_all_for_building_type(BUILDING_PREFECTURE);
+            figure_roamer_preview_create_all_for_building_type(BUILDING_WATCHTOWER);
         case OVERLAY_NONE:
         default:
             break;
@@ -390,7 +409,6 @@ static void show_overlay(int overlay)
         overlay = OVERLAY_NONE;
     }
     game_state_set_overlay(overlay);
-    city_with_overlay_update();
     show_roamers_for_overlay(overlay);
     window_invalidate();
 }
@@ -581,6 +599,7 @@ static void show_overlay_from_grid_offset(int grid_offset)
         case BUILDING_PLUM_TREE:
         case BUILDING_PALM_TREE:
         case BUILDING_DATE_TREE:
+        case BUILDING_WILLOW_TREE:
         case BUILDING_PINE_PATH:
         case BUILDING_FIR_PATH:
         case BUILDING_OAK_PATH:
@@ -608,6 +627,9 @@ static void show_overlay_from_grid_offset(int grid_offset)
         case BUILDING_NATIVE_HUT:
         case BUILDING_NATIVE_HUT_ALT:
         case BUILDING_NATIVE_MEETING:
+        case BUILDING_NATIVE_WATCHTOWER:
+        case BUILDING_NATIVE_MONUMENT:
+        case BUILDING_NATIVE_DECORATION:
             overlay = OVERLAY_NATIVE;
             break;
         case BUILDING_WAREHOUSE:
@@ -620,6 +642,18 @@ static void show_overlay_from_grid_offset(int grid_offset)
             break;
         case BUILDING_LATRINES:
             overlay = OVERLAY_HEALTH;
+            break;
+        case BUILDING_TOWER:
+        case BUILDING_WALL:
+        case BUILDING_GATEHOUSE:
+        case BUILDING_WATCHTOWER:
+        case BUILDING_FORT_LEGIONARIES:
+        case BUILDING_FORT_JAVELIN:
+        case BUILDING_FORT_MOUNTED:
+        case BUILDING_FORT_GROUND:
+        case BUILDING_FORT_AUXILIA_INFANTRY:
+        case BUILDING_FORT_ARCHERS:
+            overlay = OVERLAY_ENEMY;
             break;
         case BUILDING_NONE:
             if (map_terrain_get(grid_offset) & TERRAIN_RUBBLE) {
@@ -719,7 +753,6 @@ static void handle_hotkeys(const hotkeys *h)
         exit_military_command();
         game_state_toggle_overlay();
         show_roamers_for_overlay(game_state_overlay());
-        city_with_overlay_update();
         window_overlay_menu_update();
         window_invalidate();
     }

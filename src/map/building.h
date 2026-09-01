@@ -1,6 +1,7 @@
 #ifndef MAP_BUILDING_H
 #define MAP_BUILDING_H
 
+#include "building/building.h"
 #include "building/type.h"
 #include "core/buffer.h"
 #include "game/save_version.h"
@@ -19,7 +20,8 @@ unsigned int map_building_at(int grid_offset);
  */
 building_type map_building_type_at(int grid_offset);
 
-unsigned int map_building_from_buffer(buffer *buildings, int grid_offset);
+unsigned int map_building_from_buffer_16(buffer *buildings, int grid_offset);
+unsigned int map_building_from_buffer_32(buffer *buildings, int grid_offset);
 
 void map_building_set(int grid_offset, unsigned int building_id);
 
@@ -29,6 +31,10 @@ void map_building_set(int grid_offset, unsigned int building_id);
  * @return New damage amount
  */
 int map_building_damage_increase(int grid_offset);
+
+int map_building_damage_get(int grid_offset);
+
+void map_building_get_health(const building *b, int grid_offset, int *current, int *max);
 
 void map_building_damage_clear(int grid_offset);
 

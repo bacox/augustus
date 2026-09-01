@@ -1,7 +1,9 @@
 #include "city.h"
 
 #include "assets/assets.h"
+#include "building/granary.h"
 #include "building/monument.h"
+#include "building/warehouse.h"
 #include "core/array.h"
 #include "core/calc.h"
 #include "core/lang.h"
@@ -36,7 +38,7 @@
 
 #define NOT_SELLING 0
 
-#define EMPIRE_CITY_CURRENT_BUF_SIZE (18 + 2 * RESOURCE_MAX)
+#define EMPIRE_CITY_CURRENT_BUF_SIZE (20 + 2 * RESOURCE_MAX)
 
 static array(empire_city) cities;
 
@@ -346,7 +348,8 @@ void empire_city_set_trade_route_cost(int route_id, int new_cost)
 void empire_city_reset_yearly_trade_amounts(void)
 {
     empire_city *city;
-    array_foreach(cities, city) {
+    trade_route_save_history();
+    array_foreach(cities, city){
         if (city->in_use && city->is_open) {
             trade_route_reset_traded(city->route_id);
         }
@@ -471,9 +474,21 @@ static int generate_trader(int city_id, empire_city *city)
 void empire_city_open_trade(int city_id, int apply_cost)
 {
     empire_city *city = array_item(cities, city_id);
+    full_empire_object *full = empire_object_get_full(city->empire_object_id);
     if (apply_cost) {
         city_finance_process_sundry(city->cost_to_open);
+        // resource cost
+        for (resource_type r = RESOURCE_MIN; r < RESOURCE_MAX; r++) {
+            int amount = full->route_resource_cost[r];
+            int amount_left = building_warehouses_send_resources_to_trade_route(r, amount);
+            if (amount_left > 0 && resource_is_food(r)) {
+                building_granaries_send_resources_to_trade_route(r, amount_left);
+            }
+            int amount_units = amount * RESOURCE_ONE_LOAD;
+            city_finance_trade_ledger_add_consumed(r, amount_units);
+        }
     }
+    trade_route_set_open(city->route_id);
     city->is_open = 1;
 }
 
@@ -583,7 +598,7 @@ void empire_city_save_state(buffer *buf)
         for (int r = 0; r < RESOURCE_MAX; r++) {
             buffer_write_u8(buf, city->sells_resource[r]);
         }
-        buffer_write_i16(buf, city->cost_to_open);
+        buffer_write_u32(buf, city->cost_to_open);
         buffer_write_i16(buf, city->trader_entry_delay);
         buffer_write_i16(buf, city->empire_object_id);
         buffer_write_u8(buf, city->is_sea_trade);
@@ -727,7 +742,11 @@ void empire_city_load_state(buffer *buf, int version)
         for (int r = 0; r < resource_total_mapped(); r++) {
             city->sells_resource[resource_remap(r)] = buffer_read_u8(buf);
         }
-        city->cost_to_open = buffer_read_i16(buf);
+        if (version > SAVE_GAME_LAST_LIMITED_ROUTE_COST) {
+            city->cost_to_open = buffer_read_u32(buf);
+        } else {
+            city->cost_to_open = buffer_read_u16(buf);
+        }
         if (version <= SAVE_GAME_LAST_STATIC_SCENARIO_OBJECTS) {
             buffer_skip(buf, 2);
         }
@@ -799,6 +818,8 @@ int empire_city_get_icon_image_id(empire_city_icon_type type)
             return image_group(GROUP_EMPIRE_FOREIGN_CITY);
         case EMPIRE_CITY_ICON_TOWER:
             return assets_lookup_image_id(ASSET_UI_EMP_ICON_OLD_WATCHTOWER); // old_watchtower
+        case EMPIRE_CITY_ICON_BUTTON:
+            return image_group(GROUP_SELECT_MISSION_BUTTON); // button
         default:
             return -1;
     }
@@ -819,6 +840,6 @@ int empire_city_get_at(int x, int y, const uint8_t *name)
             }
         }
     }
-    
+
     return 0;
 }
