@@ -575,6 +575,12 @@ set(SCENARIO_FILES
     ${PROJECT_SOURCE_DIR}/src/scenario/event/condition_comparison_helper.c
     ${PROJECT_SOURCE_DIR}/src/scenario/event/condition_handler.c
     ${PROJECT_SOURCE_DIR}/src/scenario/event/condition_types.c
+    ${PROJECT_SOURCE_DIR}/src/scenario/terrain_generator/flood_filling.c
+    ${PROJECT_SOURCE_DIR}/src/scenario/terrain_generator/random_terrain_generator.c
+    ${PROJECT_SOURCE_DIR}/src/scenario/terrain_generator/river_generator.c
+    ${PROJECT_SOURCE_DIR}/src/scenario/terrain_generator/river_tools.c
+    ${PROJECT_SOURCE_DIR}/src/scenario/terrain_generator/simplex_noise.c
+    ${PROJECT_SOURCE_DIR}/src/scenario/terrain_generator/terrain_generator.c
 )
 set(GRAPHICS_FILES
     ${PROJECT_SOURCE_DIR}/src/graphics/arrow_button.c
