@@ -53,6 +53,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "graphics/screen.h"
+
 #define WINDOW_WIDTH 640
 #define WINDOW_HEIGHT 480
 
@@ -687,19 +689,19 @@ static void handle_input(const mouse *m, const hotkeys *h)
 
 static void button_select_size(const generic_button *button)
 {
-    window_select_list_show_text(0, 0, button, terrain_generator_size_labels,
+    window_select_list_show_text(screen_dialog_offset_x(), screen_dialog_offset_y(), button, terrain_generator_size_labels,
         TERRAIN_GENERATOR_SIZE_COUNT, size_selected);
 }
 
 static void button_select_algorithm(const generic_button *button)
 {
-    window_select_list_show_text(0, 0, button, terrain_generator_algorithm_labels,
+    window_select_list_show_text(screen_dialog_offset_x(), screen_dialog_offset_y(), button, terrain_generator_algorithm_labels,
         TERRAIN_GENERATOR_COUNT, algorithm_selected);
 }
 
 static void button_select_climate(const generic_button *button)
 {
-    window_select_list_show_text(0, 0, button, climate_labels, CLIMATE_COUNT, climate_selected);
+    window_select_list_show_text(screen_dialog_offset_x(), screen_dialog_offset_y(), button, climate_labels, CLIMATE_COUNT, climate_selected);
 }
 
 static void button_randomize(const generic_button *button)

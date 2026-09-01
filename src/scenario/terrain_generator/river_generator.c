@@ -95,7 +95,7 @@ void setTerrainControlled(double e,
     //     map_elevation_set(grid_offset, 0);
     //     return;
     // }
-    if (e + (d * 0.15) < water_threshold) {
+    if (e + (d * 0.30) < water_threshold) {
         map_terrain_set_with_tile_update(grid_offset, TERRAIN_WATER);
         return;
     }
@@ -185,6 +185,8 @@ void terrain_generator_river_map(unsigned int seed)
     double openness = 0.4;
     log_info("Generate first pass", 0, 1);
     paint_by_noise(&noise, fertility, roughness, openness, TERRAIN_ROCK | TERRAIN_WATER);
+    segment_map();
+
     log_info("Generate path", 0, 1);
     set_entry_exit_points();
     log_info("Generate second pass", 0, 1);
@@ -207,21 +209,6 @@ void terrain_generator_river_map(unsigned int seed)
     // roughness = 0.4;
     // openness  = 0.1;
 
-    // for (int y = 0; y < height; y++) {
-    //     for (int x = 0; x < width; x++) {
-    //         double elevation = simplex2D_octaves(&noise, x * elevation_scale, y * elevation_scale, 5, 0.5, 2.0);
-    //         double detail    = simplex2D_octaves(&noise, x *detail_scale + 100, y *detail_scale + 100, 4, 0.5, 2.0);
-    //
-    //         double e = (elevation + 1.0) * 0.5;
-    //         double d = (detail + 1.0) * 0.5;
-    //         int grid_offset = map_grid_offset(x, y);
-    //         if (map_terrain_is(grid_offset, TERRAIN_WATER)) {
-    //             continue; // Preserve river tiles
-    //         }
-    //         setTerrainControlled(e, d, grid_offset,
-    //         fertility, roughness, openness, TERRAIN_ROCK | TERRAIN_WATER | TERRAIN_SHRUB);
-    //     }
-    // }
-    segment_map();
+    // Here just for debugging
     // paint_according_to_segments();
 }

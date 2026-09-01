@@ -327,6 +327,7 @@ void set_entry_exit_points(void)
     const int height = map_grid_height();
     const uint16_t *segments = terrain_generator_segments();
 
+
     point2i entry = { 0, 0 };
     point2i point1 = { 0, 0 };
     point2i point2 = { 0, 0 };
@@ -429,6 +430,9 @@ void terrain_generator_generate(terrain_generator_algorithm algorithm)
         case TERRAIN_GENERATOR_RIVER:
             log_info("Starting river generator", 0, 1);
             terrain_generator_river_map(fixed_seed);
+            // There is a bug where the road is not rendered in the minimap if this function is called inside terrain_generator_river_map
+            // set_entry_exit_points();
+
             break;
         case TERRAIN_GENERATOR_RANDOM:
         default:
@@ -445,3 +449,4 @@ void terrain_generator_set_seed(int enabled, unsigned int seed)
     use_fixed_seed = enabled != 0;
     fixed_seed = seed;
 }
+
